@@ -1,6 +1,6 @@
 from setuptools import find_packages, setup
 
-package_name = 'main_pkg'
+package_name = 'blindsense_pkg'
 
 setup(
     name=package_name,
