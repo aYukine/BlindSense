@@ -24,6 +24,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
+            'ai_node = blindsense_ai_pkg.ai_node:main'
         ],
     },
 )
