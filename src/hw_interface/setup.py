@@ -24,7 +24,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            "sensor_node = sensor_pkg.sensor:main"
+            "hw_node = hw_interface.hw_node:main"
         ],
     },
 )

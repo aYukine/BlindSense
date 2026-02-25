@@ -4,9 +4,9 @@ from launch_ros.actions import Node
 def generate_launch_description():
     return LaunchDescription([
         Node(
-            package='sensor_pkg',
-            executable='sensor_node',
-            name='sensor'
+            package='hw_interface',
+            executable='hw_node',
+            name='hardware_bridge'
         ),
         Node(
             package='blindsense_pkg',

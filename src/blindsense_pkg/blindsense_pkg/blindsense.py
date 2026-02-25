@@ -1,17 +1,27 @@
 import rclpy
 from rclpy.node import Node
+from dc_gamepad_msgs.msg import GamePad
 from custom_messages.msg import ActionMsg
 
 class BlindsenseNode(Node):
     def __init__(self):
         super().__init__('blindsense_node')
         self.get_logger().info('BlindSense main node started.')
-        self.action_subscription = self.create_subscription(ActionMsg, 'action_data', self.action_callback, 10)
+        self.controller_listener = self.create_subscription(GamePad, '/pad', self.gamepad_callback, 10)
+        self.action_publisher = self.create_publisher(ActionMsg, '/action', 10)
 
-    def action_callback(self, msg: ActionMsg):
-        self.get_logger().info('Received action data in BlindSense node.')
-        print(f"BlindSense Node - v_motor1: {msg.v_motor1}, v_motor2: {msg.v_motor2}")
-
+    def gamepad_callback(self, msg: GamePad):
+        action_msg = ActionMsg()
+        action_msg.v_motor1 = 0
+        action_msg.v_motor2 = 0
+        action_msg.v_motor3 = 0
+        action_msg.v_motor4 = 0
+        action_msg.v_motor5 = 0 
+        action_msg.v_motor6 = 0
+        action_msg.v_motor7 = 0
+        action_msg.v_motor8 = 0
+        
+        self.action_publisher.publish(action_msg)
 
 def main(args=None):
     rclpy.init(args=args)
