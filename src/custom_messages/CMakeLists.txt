@@ -16,6 +16,7 @@ find_package(rosidl_default_generators REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/Coordinate.msg"
   "msg/ActionMsg.msg"
+  "msg/TOF.msg"
 )
 
 if(BUILD_TESTING)
