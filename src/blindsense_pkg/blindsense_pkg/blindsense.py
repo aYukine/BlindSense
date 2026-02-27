@@ -12,14 +12,8 @@ class BlindsenseNode(Node):
 
     def gamepad_callback(self, msg: GamePad):
         action_msg = ActionMsg()
-        action_msg.v_motor1 = 0
-        action_msg.v_motor2 = 0
-        action_msg.v_motor3 = 0
-        action_msg.v_motor4 = 0
-        action_msg.v_motor5 = 0 
-        action_msg.v_motor6 = 0
-        action_msg.v_motor7 = 0
-        action_msg.v_motor8 = 0
+        for i in range(8):
+            action_msg[i] = 1
         
         self.action_publisher.publish(action_msg)
 

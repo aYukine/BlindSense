@@ -6,3 +6,7 @@ if [ -z "$1" ]; then
 fi
 
 colcon build --packages-select "$1"
+
+source install/setup.bash
+
+echo "Package '$1' built and sourced successfully."
