@@ -1,4 +1,11 @@
--r requirements/optional.txt
--r requirements/runtime.txt
--r requirements/tests.txt
--r requirements/multimodal.txt
+numpy
+scipy
+matplotlib
+
+opencv-python
+pillow
+
+ultralytics
+
+openmim
+mmengine
