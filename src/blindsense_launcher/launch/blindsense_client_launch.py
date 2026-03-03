@@ -12,5 +12,10 @@ def generate_launch_description():
             package='blindsense_pkg',
             executable='blindsense_node',
             name='blindsense'
-        )
+        ),
+        Node (
+            package='camera_pkg',
+            executable='stereo_depth_node',
+            name='depth_map'
+        ),
     ])
