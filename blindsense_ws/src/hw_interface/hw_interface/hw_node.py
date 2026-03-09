@@ -18,14 +18,17 @@ class HardwareBridge(Node):
     def motor_cb(self, msg):
         """Packet format: MOT,v1,v2,v3,v4,v5,v6,v7,v8\n"""
         try:
-            # We round to 2 decimals to save bandwidth on the serial line
-            v = [msg.v_motor1, msg.v_motor2, msg.v_motor3, msg.v_motor4, 
-                 msg.v_motor5, msg.v_motor6, msg.v_motor7, msg.v_motor8]
+            # Accessing the array directly from the message
+            # msg.motor is a list/tuple of 8 integers (0-255)
+            motor_values = msg.motor 
             
-            payload = "MOT," + ",".join([f"{val:.2f}" for val in v]) + "\n"
+            # Join the 8 integers into a CSV string
+            # Example result: "MOT,255,128,0,0,0,0,0,0\n"
+            payload = "MOT," + ",".join(map(str, motor_values)) + "\n"
+            
             self.ser.write(payload.encode('utf-8'))
         except Exception as e:
-            self.get_logger().error(f"Write Error: {e}")
+            self.get_logger().error(f"Serial Write Error: {e}")
 
     def update(self):
         if self.ser.in_waiting > 0:
