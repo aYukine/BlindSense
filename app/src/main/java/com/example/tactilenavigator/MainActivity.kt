@@ -15,10 +15,14 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import android.graphics.BitmapFactory
+import android.widget.ImageView
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var usbManager: UsbManager
+    private var keepAliveConnection: android.hardware.usb.UsbDeviceConnection? = null
+
     private val TAG = "TactileNav"
     private val ACTION_USB_PERMISSION = "com.example.tactilenavigator.USB_PERMISSION"
 
@@ -92,12 +96,30 @@ class MainActivity : AppCompatActivity() {
     private fun openUsbDevice(device: UsbDevice) {
         val connection = usbManager.openDevice(device)
         if (connection != null) {
+            keepAliveConnection = connection
+
+            for (i in 0 until device.interfaceCount) {
+                val usbInterface = device.getInterface(i)
+                val claimed = connection.claimInterface(usbInterface, true)
+                Log.d(TAG, "Claimed Interface $i in Kotlin: $claimed")
+            }
+
             val fileDescriptor = connection.fileDescriptor
             Log.d(TAG, "Device opened successfully. File Descriptor: $fileDescriptor")
 
             passFileDescriptorToNative(fileDescriptor)
         } else {
             Log.e(TAG, "Failed to open USB connection. Connection object is null.")
+        }
+    }
+
+    fun onFrameReceived(jpegBytes: ByteArray) {
+        val bitmap = BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.size)
+
+        if (bitmap != null) {
+            runOnUiThread {
+                findViewById<ImageView>(R.id.cameraPreview).setImageBitmap(bitmap)
+            }
         }
     }
 
