@@ -28,6 +28,7 @@ setup(
             "mono_camera_compressed_node = camera_pkg.camera_compressed:main",
             "show_camera_compressed_node = camera_pkg.show_cam_compressed:main",
             "stereo_depth = camera_pkg.stereo_depth:main",
+            "camera = camera_pkg.camera:main",
             "stereo_perception = camera_pkg.stereo_perception_node:main"
         ],
     },
