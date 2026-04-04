@@ -1,22 +1,40 @@
 import rclpy
 from rclpy.node import Node
-from custom_messages.msg import Coordinate, ActionMsg
+from sensor_msgs.msg import Image
+import numpy as np
 
 class AINode(Node):
     def __init__(self):
         super().__init__('ai_node')
-        self.get_logger().info('AI node started.')
-        self.coor_subscription = self.create_subscription(Coordinate, 'coor_data', self.coordinate_callback, 10)
-        self.action_publisher = self.create_publisher(ActionMsg, 'action_data', 10)
+        self.get_logger().info('AI segmentation node started.')
+        
+        # Subscribe to the hardware camera feed
+        self.img_sub = self.create_subscription(Image, 'camera/left/image_raw', self.image_callback, 10)
+        
+        # Publish the Fast-SCNN mask (0 = obstacle, 255 = walkable)
+        self.mask_pub = self.create_publisher(Image, 'perception/walkable_mask', 10)
 
-    def coordinate_callback(self, msg: Coordinate):
-        self.get_logger().info('Received coordinate data in AI node.')
-        print(f"AI Node - Latitude: {msg.latitude}, Longitude: {msg.longitude}, Yaw: {msg.yaw}")
-
-        action_msg = ActionMsg()
-        action_msg.v_motor1 = 1.0
-        action_msg.v_motor2 = 0.47
-        self.action_publisher.publish(action_msg)
+    def image_callback(self, msg: Image):
+        # 1. Convert incoming image to numpy array for PyTorch/ONNX
+        frame = np.frombuffer(msg.data, dtype=np.uint8).reshape((msg.height, msg.width, 3))
+        
+        # 2. PLACEHOLDER: Run Fast-SCNN Inference here. 
+        # For now, we will create a dummy mask indicating the bottom half is "walkable"
+        
+        mask = np.zeros((msg.height, msg.width), dtype=np.uint8)
+        mask[msg.height // 2:, :] = 255  # Fake walkable area
+        
+        # 3. Publish mask
+        mask_msg = Image()
+        mask_msg.header.stamp = msg.header.stamp # Keep timestamp for sync
+        mask_msg.header.frame_id = msg.header.frame_id
+        mask_msg.height = msg.height
+        mask_msg.width = msg.width
+        mask_msg.encoding = 'mono8'
+        mask_msg.step = msg.width
+        mask_msg.data = mask.tobytes()
+        
+        self.mask_pub.publish(mask_msg)
 
 def main(args=None):
     rclpy.init(args=args)
