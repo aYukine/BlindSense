@@ -1,14 +1,16 @@
 import rclpy
 from rclpy.node import Node
-from custom_messages.msg import TOF
+from sensor_msgs.msg import Image
 import serial
+import numpy as np
 
 class TofPublisher(Node):
     def __init__(self):
         super().__init__('tof_publisher_node')
-        self.publisher_ = self.create_publisher(TOF, 'tof_raw_data', 10)
         
-        self.declare_parameter('device', '/dev/ttyACM0')
+        self.image_publisher_ = self.create_publisher(Image, 'tof_depth_image', 10)
+        
+        self.declare_parameter('device', '/dev/cu.usbmodem1101')
         self.device = self.get_parameter('device').get_parameter_value().string_value
         
         try:
@@ -24,24 +26,32 @@ class TofPublisher(Node):
     def serial_read_callback(self):
         if self.ser.in_waiting > 0:
             try:
-                line = self.ser.readline().decode('ascii', errors='ignore').strip()
+                # Read the raw bytes and decode
+                raw_bytes = self.ser.readline()
+                line = raw_bytes.decode('ascii', errors='ignore').strip()
                 
-                if ':' in line and line.startswith('y'):
-                    header, data_str = line.split(':')
-                    row_idx = int(header[1:])
-                    row_values = [int(v.strip()) for v in data_str.split(',') if v.strip()]
-                    
-                    if len(row_values) == 8:
-                        start = row_idx * 8
-                        self.current_grid[start : start + 8] = row_values
-
-                    if row_idx == 7:
-                        msg = TOF()
-                        msg.data = self.current_grid
-                        self.publisher_.publish(msg)
+                # Print EVERYTHING that comes over the serial port
+                if line:
+                    self.get_logger().info(f"RAW SERIAL: {line}")
                         
             except Exception as e:
                 self.get_logger().warn(f"Bad packet: {e}")
+
+    def publish_rviz_image(self):
+        msg = Image()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.frame_id = 'tof_link'  
+        
+        msg.height = 8
+        msg.width = 8
+        msg.encoding = '16UC1'  
+        msg.is_bigendian = 0
+        msg.step = 8 * 2       
+        
+        depth_array = np.array(self.current_grid, dtype=np.uint16)
+        msg.data = depth_array.tobytes()
+        
+        self.image_publisher_.publish(msg)
 
 def main(args=None):
     rclpy.init(args=args)

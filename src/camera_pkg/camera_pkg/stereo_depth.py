@@ -1,59 +1,54 @@
-import rclpy
-import numpy as np
-import cv2
-from rclpy.node import Node
-from sensor_msgs.msg import CompressedImage
-from rclpy.qos import QoSProfile, ReliabilityPolicy
 import os
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import Image
+from cv_bridge import CvBridge
+import cv2
+import numpy as np
+import cv2.ximgproc
 from ament_index_python.packages import get_package_share_directory
 
 class StereoDepthNode(Node):
     def __init__(self):
-        super().__init__('depth_node')
-        self.get_logger().info('stereo depth node started.')
-        qos_profile = QoSProfile(
-            reliability=ReliabilityPolicy.BEST_EFFORT,
-            depth=1
-        )
-        self.timer = self.create_timer(0.1, self.capture_depth)
-        self.image_publisher = self.create_publisher(CompressedImage, 'camera/image/compressed', qos_profile)
-        self.setup_cam()
+        super().__init__('stereo_depth_node')
+        
+        # Publisher and Bridge
+        self.depth_pub = self.create_publisher(Image, 'stereo/depth', 10)
+        self.disparity_pub = self.create_publisher(Image, 'stereo/disparity_filtered', 10)
+        self.bridge = CvBridge()
+        
+        # Locate and Load the Calibration XML
+        pkg_share_dir = get_package_share_directory('camera_pkg')
+        calib_file = os.path.join(pkg_share_dir, 'config', 'stereoMap.xml')
+        self.get_logger().info(f"Loading calibration from: {calib_file}")
+        self.load_rectification_maps(calib_file)
 
-    def setup_cam(self):    
-        try:
-            package_share_dir = get_package_share_directory('camera_pkg')
-            xml_path = os.path.join(package_share_dir, 'config', 'stereoMap.xml')
-            self.get_logger().info(f'Loading calibration from: {xml_path}')
-        except Exception as e:
-            self.get_logger().error(f'Failed to find package directory: {e}')
-            return
+        # Initialize the SBS Stereo Camera
+        self.cap = cv2.VideoCapture(0)
+        if not self.cap.isOpened():
+            self.get_logger().error("Failed to open stereo camera at index 0!")
+        else:
+            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 2560)
+            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+            self.cap.set(cv2.CAP_PROP_FPS, 30)
+            
+            actual_width = self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+            actual_height = self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+            actual_fps = self.cap.get(cv2.CAP_PROP_FPS)
+            self.get_logger().info(f"Camera initialized at: {actual_width}x{actual_height} @ {actual_fps}FPS")
 
-        cv_file = cv2.FileStorage()
-        if not cv_file.open(xml_path, cv2.FileStorage_READ):
-            self.get_logger().error('Could not open stereoMap.xml!')
-            return
-
-        self.stereoMapL_x = cv_file.getNode('stereoMapL_x').mat()
-        self.stereoMapL_y = cv_file.getNode('stereoMapL_y').mat()
-        self.stereoMapR_x = cv_file.getNode('stereoMapR_x').mat()
-        self.stereoMapR_y = cv_file.getNode('stereoMapR_y').mat()
-        cv_file.release()
-
-        self.cap = cv2.VideoCapture(2)
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 2560)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-
+        # SGBM Parameters 
         window_size = 5
         min_disp = 0
-        num_disp = 16 * 10 # Must be divisible by 16. Higher means it can see closer objects.
+        num_disp = 16 * 10
 
-        # Create the Left Matcher
+        # The Left Matcher (Primary SGBM)
         self.left_matcher = cv2.StereoSGBM_create(
             minDisparity=min_disp,
             numDisparities=num_disp,
             blockSize=window_size,
-            P1=8 * 3 * window_size ** 2,
-            P2=32 * 3 * window_size ** 2,
+            P1=8 * 1 * window_size ** 2,   
+            P2=32 * 1 * window_size ** 2,  
             disp12MaxDiff=1,
             uniquenessRatio=15,
             speckleWindowSize=100,
@@ -61,59 +56,106 @@ class StereoDepthNode(Node):
             mode=cv2.STEREO_SGBM_MODE_SGBM_3WAY
         )
 
+        # The Right Matcher (Required for WLS)
         self.right_matcher = cv2.ximgproc.createRightMatcher(self.left_matcher)
+        
         self.wls_filter = cv2.ximgproc.createDisparityWLSFilter(matcher_left=self.left_matcher)
-        self.wls_filter.setLambda(8000) 
-        self.wls_filter.setSigmaColor(1.5) 
+        self.wls_filter.setLambda(8000)
+        self.wls_filter.setSigmaColor(1.5)
+        
+        # Replace with your actual hardware constants from calibration
+        self.focal_length = 800.0 
+        self.baseline = 0.06 
+        
+        # Timer matching your 15-30 frames per second target
+        self.timer = self.create_timer(1.0 / 15.0, self.process_frames)
+        self.get_logger().info("Stereo Depth Node Initialized and Publishing.")
 
-    def capture_depth(self):
-        ret, frame = self.cap.read()
+    def load_rectification_maps(self, filepath):
+        """Extracts the X and Y maps for both lenses from the XML file."""
+        cv_file = cv2.FileStorage(filepath, cv2.FILE_STORAGE_READ)
+        
+        self.mapL_x = cv_file.getNode('stereoMapL_x').mat()
+        self.mapL_y = cv_file.getNode('stereoMapL_y').mat()
+        self.mapR_x = cv_file.getNode('stereoMapR_x').mat()
+        self.mapR_y = cv_file.getNode('stereoMapR_y').mat()
+        
+        cv_file.release()
+        
+        if self.mapL_x is None:
+            self.get_logger().error("Failed to load maps! Check XML key names.")
+
+    def process_frames(self):
+        # Capture the single SBS frame
+        ret, sbs_frame = self.cap.read()
         if not ret:
-            self.get_logger().error('fail to capture camera')
+            self.get_logger().warn("Dropped frame from stereo camera.")
+            return
 
-        half_width = frame.shape[1] // 2
-        frame_left = frame[:, :half_width]
-        frame_right = frame[:, half_width:]
+        # Slice the frame down the middle
+        mid_point = sbs_frame.shape[1] // 2 
+        left_frame = sbs_frame[:, :mid_point] 
+        right_frame = sbs_frame[:, mid_point:] 
 
-        rect_left = cv2.remap(frame_left, self.stereoMapL_x, self.stereoMapL_y, cv2.INTER_LANCZOS4, cv2.BORDER_CONSTANT, 0)
-        rect_right = cv2.remap(frame_right, self.stereoMapR_x, self.stereoMapR_y, cv2.INTER_LANCZOS4, cv2.BORDER_CONSTANT, 0)
+        # Apply the rectification maps
+        rectified_L = cv2.remap(left_frame, self.mapL_x, self.mapL_y, cv2.INTER_LINEAR)
+        rectified_R = cv2.remap(right_frame, self.mapR_x, self.mapR_y, cv2.INTER_LINEAR)
 
-        gray_left = cv2.cvtColor(rect_left, cv2.COLOR_BGR2GRAY)
-        gray_right = cv2.cvtColor(rect_right, cv2.COLOR_BGR2GRAY)
+        # Convert to grayscale for SGBM
+        left_gray = cv2.cvtColor(rectified_L, cv2.COLOR_BGR2GRAY)
+        right_gray = cv2.cvtColor(rectified_R, cv2.COLOR_BGR2GRAY)
 
-        disp_left = self.left_matcher.compute(gray_left, gray_right)
-        disp_right = self.right_matcher.compute(gray_right, gray_left)
+        # Compute Left and Right Disparities
+        disp_left = self.left_matcher.compute(left_gray, right_gray)
+        disp_right = self.right_matcher.compute(right_gray, left_gray)
 
-        filtered_disp = self.wls_filter.filter(disp_left, gray_left, None, disp_right)
+        # Apply the WLS Filter
+        filtered_disp = self.wls_filter.filter(disp_left, left_gray, None, disp_right)
 
-        filtered_disp_vis = cv2.normalize(filtered_disp, None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+        # Convert to Depth
+        disparity = filtered_disp.astype(np.float32) / 16.0
+
+        disparity[disparity <= 0] = 0.1 
+
+        depth = (self.focal_length * self.baseline) / disparity
+        depth[depth > 5.0] = 5.0  # Cap max distance at 5 meters
+
+        # Publish to ROS 2
+        depth_msg = self.bridge.cv2_to_imgmsg(depth, encoding="32FC1")
+        depth_msg.header.stamp = self.get_clock().now().to_msg()
+        depth_msg.header.frame_id = "camera_link" 
+
+        self.depth_pub.publish(depth_msg)
         
-        depth_colormap = cv2.applyColorMap(filtered_disp_vis, cv2.COLORMAP_JET)
+        # Prevent divide-by-zero on invalid pixels
+        disparity[disparity <= 0] = 0.1 
 
-        small_frame = cv2.resize(depth_colormap, (640, 360)) 
-        msg = CompressedImage()
-        msg.header.stamp = self.get_clock().now().to_msg()
-        msg.format = "jpeg"
-        encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 20]
-        success, encoded_image = cv2.imencode('.jpg', small_frame, encode_param)
+        depth = (self.focal_length * self.baseline) / disparity
+        depth[depth > 5.0] = 5.0  # Cap max distance at 5 meters
 
-        if success:
-            msg.data = encoded_image.tobytes()
-            self.image_publisher.publish(msg)
+        # Publish to ROS 2
+        depth_msg = self.bridge.cv2_to_imgmsg(depth, encoding="32FC1")
+        depth_msg.header.stamp = self.get_clock().now().to_msg()
+        depth_msg.header.frame_id = "camera_link" 
         
-    
+        self.depth_pub.publish(depth_msg)
+
+    def destroy_node(self):
+        self.get_logger().info("Shutting down and releasing camera...")
+        if hasattr(self, 'cap') and self.cap is not None:
+            self.cap.release()
+        super().destroy_node()
 
 def main(args=None):
     rclpy.init(args=args)
-    camera_node = StereoDepthNode()
+    node = StereoDepthNode()
     try:
-        rclpy.spin(camera_node)
+        rclpy.spin(node)
     except KeyboardInterrupt:
-        pass
+        node.get_logger().info("Keyboard Interrupt detected.")
     finally:
-        camera_node.cap.release()
-        camera_node.destroy_node()
-        rclpy.shutdown()
+        node.destroy_node()
+        rclpy.try_shutdown()
 
 if __name__ == '__main__':
     main()
