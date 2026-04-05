@@ -12,6 +12,10 @@ class CameraNode(Node):
         self.left_pub = self.create_publisher(Image, 'camera/left/image_raw', 10)
         self.right_pub = self.create_publisher(Image, 'camera/right/image_raw', 10)
         
+        from sensor_msgs.msg import CameraInfo
+        self.left_info_pub = self.create_publisher(CameraInfo, 'camera/left/camera_info', 10)
+        self.right_info_pub = self.create_publisher(CameraInfo, 'camera/right/camera_info', 10)
+        
         try:
             self.cap = cv2.VideoCapture(0)
             self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 2560)
@@ -38,6 +42,11 @@ class CameraNode(Node):
             
             self.left_pub.publish(left_msg)
             self.right_pub.publish(right_msg)
+            
+            left_info = self.create_camera_info_msg(stamp, "camera_left_link", left_frame.shape[1], left_frame.shape[0])
+            right_info = self.create_camera_info_msg(stamp, "camera_right_link", right_frame.shape[1], right_frame.shape[0])
+            self.left_info_pub.publish(left_info)
+            self.right_info_pub.publish(right_info)
         else:
             self.get_logger().error('Failed to capture frame.')
             
@@ -51,6 +60,20 @@ class CameraNode(Node):
         img_msg.step = frame.shape[1] * 3
         img_msg.data = frame.tobytes()
         return img_msg
+    
+    def create_camera_info_msg(self, stamp, frame_id, width, height):
+        info = CameraInfo()
+        info.header.stamp = stamp
+        info.header.frame_id = frame_id
+        info.width = width
+        info.height = height
+        info.distortion_model = "plumb_bob"
+        
+        # Approximate focal length so RTAB-Map can initialize geometry
+        focal_length = width * 0.8 
+        info.k = [focal_length, 0.0, width/2.0, 0.0, focal_length, height/2.0, 0.0, 0.0, 1.0]
+        info.p = [focal_length, 0.0, width/2.0, 0.0, 0.0, focal_length, height/2.0, 0.0, 0.0, 0.0, 1.0, 0.0]
+        return info
 
 def main(args=None):
     rclpy.init(args=args)
