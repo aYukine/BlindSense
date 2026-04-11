@@ -26,6 +26,7 @@ endif()
 install(PROGRAMS
   src/yolo_detector_node.py
   src/metric_logger.py
+  src/fast_scnn_segmenter_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
