@@ -23,7 +23,7 @@ class YoloAscendNode(Node):
         # context.target = ["ascend"]
         # context.ascend.device_id = 0
         # self.model = mslite.Model()
-        # self.model.build_from_file("models/converted/yolo.om", mslite.ModelType.OM, context)
+        # self.model.build_from_file("models/converted/yolo_threat_model.om", mslite.ModelType.OM, context)
 
     def image_callback(self, msg):
         start_time = time.time()
