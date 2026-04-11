@@ -24,6 +24,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
+            'actuator_controller_node = haptic_decision.actuator_controller_node:main'
         ],
     },
 )
