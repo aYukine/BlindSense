@@ -31,6 +31,15 @@ ament_target_dependencies(depth_estimator_node
   pcl_conversions
 )
 target_link_libraries(depth_estimator_node ${PCL_LIBRARIES})
+
+add_executable(spatial_fusion_node src/spatial_fusion_node.cpp)
+ament_target_dependencies(spatial_fusion_node
+  rclcpp
+  sensor_msgs
+  cv_bridge
+  image_geometry
+  pcl_conversions
+)
 target_link_libraries(spatial_fusion_node ${PCL_LIBRARIES})
 
 install(TARGETS
