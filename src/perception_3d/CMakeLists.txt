@@ -31,9 +31,11 @@ ament_target_dependencies(depth_estimator_node
   pcl_conversions
 )
 target_link_libraries(depth_estimator_node ${PCL_LIBRARIES})
+target_link_libraries(spatial_fusion_node ${PCL_LIBRARIES})
 
 install(TARGETS
   depth_estimator_node
+  spatial_fusion_node
   DESTINATION lib/${PROJECT_NAME}
 )
 
