@@ -14,5 +14,10 @@
 
   <export>
     <build_type>ament_cmake</build_type>
+    <depend>rclcpp</depend>
+    <depend>sensor_msgs</depend>
+    <depend>cv_bridge</depend>
+    <depend>image_geometry</depend>
+    <depend>pcl_conversions</depend>
   </export>
 </package>
