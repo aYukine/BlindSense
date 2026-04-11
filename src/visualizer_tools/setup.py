@@ -24,6 +24,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
+            'presentation_exporter = visualizer_tools.presentation_exporter:main'
         ],
     },
 )
