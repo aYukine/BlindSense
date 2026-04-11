@@ -16,11 +16,10 @@ def export_model(ckpt_path, output_name, num_classes):
     
     dummy_input = ms.Tensor(np.ones([1, 3, 720, 1280]), ms.float32)
     
-    # 4. Export to ONNX
-    export_path = f"../converted/{output_name}.onnx"
-    ms.export(net, dummy_input, file_name=export_path, file_format="ONNX")
+    export_path = f"../converted/{output_name}" 
+    ms.export(net, dummy_input, file_name=export_path, file_format="MINDIR")
     
-    print(f"Successfully exported intermediate model to: {export_path}")
+    print(f"Successfully exported intermediate model to: {export_path}.mindir")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
