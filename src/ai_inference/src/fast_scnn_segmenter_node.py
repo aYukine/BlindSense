@@ -10,11 +10,14 @@ import time
 class FastScnnAscendNode(Node):
     def __init__(self):
         super().__init__('fast_scnn_segmenter')
+        self.declare_parameter('model_path', 'src/ai_inference/models/converted/fast_scnn_finetune_106.om')
+        model_file = self.get_parameter('model_path').value
+        
         self.subscription = self.create_subscription(Image, 'camera/image_raw', self.image_callback, 10)
         self.publisher_ = self.create_publisher(Image, 'inference/segmentation_mask', 10)
         self.bridge = CvBridge()
         
-        self.get_logger().info("Loading Fast-SCNN .om model on Ascend NPU...")
+        self.get_logger().info(f"Loading Fast-SCNN .om model from: {model_file}")
         # --- MindSpore Lite Ascend Init (Placeholder) ---
         # context.ascend.device_id = 0
         # self.model.build_from_file("models/converted/fast_scnn_finetune-50_12.om", mslite.ModelType.OM, context)
