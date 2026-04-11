@@ -16,9 +16,7 @@ class HapticControllerNode(Node):
     def calculate_haptic_feedback(self, angle_deg, distance_meters, mode):
         pressure_intensity = max(0, min(100, int((3.0 - distance_meters) / 2.5 * 100)))
 
-        # 2. Vibration Logic (Pattern = Direction to move)
         if angle_deg < -15:
-            # Object is on the left, tell user to turn right
             vibration_pattern = "Buzz Right Side (Turn Right)"
         elif angle_deg > 15:
             vibration_pattern = "Buzz Left Side (Turn Left)"
