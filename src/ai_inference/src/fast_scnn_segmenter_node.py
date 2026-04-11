@@ -17,7 +17,7 @@ class FastScnnAscendNode(Node):
         self.get_logger().info("Loading Fast-SCNN .om model on Ascend NPU...")
         # --- MindSpore Lite Ascend Init (Placeholder) ---
         # context.ascend.device_id = 0
-        # self.model.build_from_file("models/converted/fast_scnn.om", mslite.ModelType.OM, context)
+        # self.model.build_from_file("models/converted/fast_scnn_finetune-50_12.om", mslite.ModelType.OM, context)
 
     def image_callback(self, msg):
         start_time = time.time()

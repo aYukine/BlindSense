@@ -25,6 +25,7 @@ setup(
     entry_points={
         'console_scripts': [
             'video_streamer = data_ingestion.video_streamer:main',
+            'bag_player = data_ingestion.bag_player:main'
         ],
     },
 )
