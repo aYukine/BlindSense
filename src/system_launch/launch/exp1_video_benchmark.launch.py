@@ -6,18 +6,15 @@ from launch.substitutions import LaunchConfiguration
 from launch.conditions import IfCondition
 
 def generate_launch_description():
-    run_yolo_arg = DeclareLaunchArgument('run_yolo', default_value='true')
-    run_fast_scnn_arg = DeclareLaunchArgument('run_fast_scnn', default_value='true')
-    record_mp4_arg = DeclareLaunchArgument('record_mp4', default_value='true')
-    # NEW: Safety switch to prevent the hardcoded MP4 from ruining datasets
-    run_streamer_arg = DeclareLaunchArgument('run_streamer', default_value='false')
+    # --- 1. SAFETY SWITCHES & ARGUMENTS ---
+    run_streamer_arg = DeclareLaunchArgument('run_streamer', default_value='false', description='WARNING: Set true ONLY for live camera, NOT for datasets')
+    record_mp4_arg = DeclareLaunchArgument('record_mp4', default_value='true', description='Record the fused presentation video')
 
-    run_yolo = LaunchConfiguration('run_yolo')
-    run_fast_scnn = LaunchConfiguration('run_fast_scnn')
-    record_mp4 = LaunchConfiguration('record_mp4')
     run_streamer = LaunchConfiguration('run_streamer')
+    record_mp4 = LaunchConfiguration('record_mp4')
 
-    # This node will ONLY run if you explicitly say run_streamer:=true
+    # --- 2. DATA INGESTION ---
+    # Locked behind the safety switch so it never hijacks your .db3 bag runs again
     video_streamer_node = Node(
         package='data_ingestion',
         executable='video_streamer',
@@ -26,11 +23,11 @@ def generate_launch_description():
         output='screen'
     )
 
+    # --- 3. BARE-METAL AI NPU NODES ---
     yolo_node = Node(
         package='ai_inference',
         executable='yolo_detector_node.py', 
         name='yolo_detector',
-        condition=IfCondition(run_yolo),
         output='screen'
     )
 
@@ -38,10 +35,33 @@ def generate_launch_description():
         package='ai_inference',
         executable='fast_scnn_segmenter_node.py',
         name='fast_scnn_segmenter',
-        condition=IfCondition(run_fast_scnn),
         output='screen'
     )
 
+    # --- 4. 3D PERCEPTION (C++ ENGINES) ---
+    depth_estimator_node = Node(
+        package='perception_3d',
+        executable='depth_estimator_node',
+        name='depth_estimator',
+        output='screen'
+    )
+
+    spatial_fusion_node = Node(
+        package='perception_3d',
+        executable='spatial_fusion_node',
+        name='spatial_fusion',
+        output='screen'
+    )
+
+    # --- 5. HAPTIC DECISION & HARDWARE ---
+    actuator_controller_node = Node(
+        package='haptic_decision',
+        executable='actuator_controller_node.py',
+        name='actuator_controller',
+        output='screen'
+    )
+
+    # --- 6. TELEMETRY & PRESENTATION ---
     metric_logger_node = Node(
         package='ai_inference',
         executable='metric_logger.py',
@@ -49,23 +69,23 @@ def generate_launch_description():
         output='screen'
     )
 
-    # UPDATED: Matches the new Unified Presentation Exporter
     presentation_exporter_node = Node(
         package='visualizer_tools',
-        executable='presentation_exporter.py',
+        executable='presentation_exporter.py', # The new Unified script
         name='presentation_exporter',
         condition=IfCondition(record_mp4),
         output='screen'
     )
 
     return LaunchDescription([
-        run_yolo_arg,
-        run_fast_scnn_arg,
-        record_mp4_arg,
         run_streamer_arg,
+        record_mp4_arg,
         video_streamer_node,
         yolo_node,
         fast_scnn_node,
+        depth_estimator_node,
+        spatial_fusion_node,
+        actuator_controller_node,
         metric_logger_node,
         presentation_exporter_node
     ])
