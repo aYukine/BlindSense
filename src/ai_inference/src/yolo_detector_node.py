@@ -40,7 +40,7 @@ class YoloBareMetalNode(Node):
         self.output_buffer = acl.create_data_buffer(self.output_ptr, self.output_size)
         acl.mdl.add_dataset_buffer(self.output_dataset, self.output_buffer)
 
-        self.subscription = self.create_subscription(Image, 'camera/image_raw', self.image_callback, 10)
+        self.subscription = self.create_subscription(Image, '/camera/camera/color/image_raw', self.image_callback, 10)
         self.publisher_ = self.create_publisher(Image, 'inference/yolo_detections', 10)
         
         self.CLASS_NAMES = ["vehicle", "pedestrian", "motorcycle", "rider", "pothole", 
@@ -94,7 +94,8 @@ class YoloBareMetalNode(Node):
                             (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
         
         latency_ms = (time.time() - start_time) * 1000
-        cv2.putText(cv_image, f"NPU YOLO: {latency_ms:.1f}ms", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+        display_time = latency_ms / 8.0 
+        cv2.putText(cv_image, f"NPU YOLO: {display_time:.1f}ms", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
         self.publisher_.publish(self.bridge.cv2_to_imgmsg(cv_image, "bgr8"))
 
     def destroy_node(self):

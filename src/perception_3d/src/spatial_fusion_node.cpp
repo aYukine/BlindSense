@@ -22,7 +22,7 @@ public:
         
         // Subscribers
         info_sub_ = this->create_subscription<sensor_msgs::msg::CameraInfo>(
-            "camera/depth/camera_info", 10, std::bind(&SpatialFusionNode::info_cb, this, _1));
+            "/camera/camera/color/camera_info", 10, std::bind(&SpatialFusionNode::info_cb, this, _1));
             
         mask_sub_ = this->create_subscription<sensor_msgs::msg::Image>(
             "inference/segmentation_mask", 10, std::bind(&SpatialFusionNode::mask_cb, this, _1));

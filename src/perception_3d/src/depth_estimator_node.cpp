@@ -16,9 +16,9 @@ public:
         pc_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("perception/point_cloud", 10);
         
         depth_sub_ = this->create_subscription<sensor_msgs::msg::Image>(
-            "camera/depth/image_rect_raw", 10, std::bind(&DepthEstimatorNode::depth_cb, this, _1));
+            "/camera/camera/aligned_depth_to_color/image_raw", 10, std::bind(&DepthEstimatorNode::depth_cb, this, _1));
         info_sub_ = this->create_subscription<sensor_msgs::msg::CameraInfo>(
-            "camera/depth/camera_info", 10, std::bind(&DepthEstimatorNode::info_cb, this, _1));
+            "/camera/camera/color/camera_info", 10, std::bind(&DepthEstimatorNode::info_cb, this, _1));
             
         RCLCPP_INFO(this->get_logger(), "Depth Estimator Node Initialized (High-Speed CPU Math Mode)");
     }
