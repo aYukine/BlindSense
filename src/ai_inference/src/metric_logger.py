@@ -10,17 +10,32 @@ class MetricLogger(Node):
         self.timer = self.create_timer(1.0, self.log_metrics) 
         
     def log_metrics(self):
+        # 1. Get ARM CPU & RAM
         cpu_usage = psutil.cpu_percent()
         ram_usage = psutil.virtual_memory().percent
         
-        # Query Ascend NPU
+        npu_core = "N/A"
+        npu_mem = "N/A"
+        
+        # 2. Query Ascend NPU for real telemetry
         try:
-            npu_output = subprocess.check_output(['npu-smi', 'info']).decode('utf-8')
-            npu_status = "OK" 
-        except FileNotFoundError:
-            npu_status = "npu-smi not found"
+            # Run the command to get NPU usages
+            usages_output = subprocess.check_output(['npu-smi', 'info', '-t', 'usages', '-i', '0', '-c', '0']).decode('utf-8')
             
-        self.get_logger().info(f"Metrics -> CPU: {cpu_usage}% | RAM: {ram_usage}% | NPU: {npu_status}")
+            # Parse the text output to find exactly what we need
+            for line in usages_output.split('\n'):
+                if "Aicore Usage Rate" in line:
+                    npu_core = line.split(':')[1].strip()
+                elif "Memory Usage Rate" in line:
+                    npu_mem = line.split(':')[1].strip()
+                    
+            npu_status = f"AI Core: {npu_core}% | NPU Mem: {npu_mem}%" 
+            
+        except Exception as e:
+            npu_status = "npu-smi offline"
+            
+        # 3. Print the ultimate unified metric log
+        self.get_logger().info(f"Metrics -> ARM CPU: {cpu_usage}% | ARM RAM: {ram_usage}% || NPU -> {npu_status}")
 
 def main(args=None):
     rclpy.init(args=args)

@@ -1,64 +1,74 @@
 #!/usr/bin/env python3
+
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
+import message_filters
 from cv_bridge import CvBridge
 import cv2
+import time
+import os
 
-class PresentationExporter(Node):
+class UnifiedPresentationExporter(Node):
     def __init__(self):
         super().__init__('presentation_exporter')
-        
-        self.declare_parameter('topic_name', 'inference/segmentation_mask')
-        target_topic = self.get_parameter('topic_name').value
-        
-        self.subscription = self.create_subscription(Image, target_topic, self.image_callback, 10)
         self.bridge = CvBridge()
         
-        # Video Writer Setup
-        self.output_filename = 'huawei_edge_ai_demo.mp4'
-        self.fourcc = cv2.VideoWriter_fourcc(*'mp4v') # Universal MP4 codec
+        self.get_logger().info("Initializing Unified AI Fusion Exporter...")
+
+        # 1. Subscribe to BOTH AI output topics
+        self.mask_sub = message_filters.Subscriber(self, Image, '/inference/segmentation_mask')
+        self.yolo_sub = message_filters.Subscriber(self, Image, '/inference/yolo_detections')
+        
+        # 2. Synchronize them (Wait for matching timestamps)
+        # slop=0.1 means it allows a 100ms difference between the Fast-SCNN and YOLO outputs
+        self.ts = message_filters.ApproximateTimeSynchronizer([self.mask_sub, self.yolo_sub], queue_size=10, slop=0.1)
+        self.ts.registerCallback(self.sync_callback)
+
         self.video_writer = None
         
-        self.get_logger().info(f"Waiting for frames on {target_topic} to start recording...")
+        # Dynamic filename generation to prevent overwriting
+        self.output_filename = f"blindense_fused_output_{int(time.time())}.mp4"
+        self.get_logger().info(f"Waiting for synchronized AI frames to start recording to {self.output_filename}...")
 
-    def image_callback(self, msg):
-        # 1. Convert ROS Image to OpenCV format
-        frame = self.bridge.imgmsg_to_cv2(msg, "bgr8")
-        height, width, _ = frame.shape
+    def sync_callback(self, mask_msg, yolo_msg):
+        # Convert both ROS images to OpenCV frames
+        mask_frame = self.bridge.imgmsg_to_cv2(mask_msg, "bgr8")
+        yolo_frame = self.bridge.imgmsg_to_cv2(yolo_msg, "bgr8")
         
-        # 2. Initialize VideoWriter on the first frame (so we know the exact resolution)
+        # 3. Dynamic Video Writer Initialization
         if self.video_writer is None:
-            self.video_writer = cv2.VideoWriter(self.output_filename, self.fourcc, 30.0, (width, height))
-            self.get_logger().info(f"Started recording {width}x{height} video to {self.output_filename}")
+            height, width = yolo_frame.shape[:2]
+            # Use dynamic resolution based on incoming frames
+            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+            self.video_writer = cv2.VideoWriter(self.output_filename, fourcc, 30.0, (width, height))
+            self.get_logger().info(f"Started recording at {width}x{height}")
 
-        # 3. Add Presentation Branding (Aligning with Huawei Ecosystem requirement)
-        # Dark background strip for text readability
-        cv2.rectangle(frame, (0, height - 80), (width, height), (0, 0, 0), -1)
+        # 4. FUSE THE FRAMES
+        # We blend the YOLO image (which has the red boxes) with the Fast-SCNN image (which has the green masks)
+        fused_frame = cv2.addWeighted(yolo_frame, 0.6, mask_frame, 0.4, 0)
         
-        # Branding Text
-        cv2.putText(frame, "Hardware: Orange Pi AI Pro (Ascend NPU 20 TOPS)", (15, height - 50), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-        cv2.putText(frame, "Ecosystem: MindSpore & ModelArts", (15, height - 20), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-
-        # 4. Write frame to MP4
-        self.video_writer.write(frame)
+        # Add a unified watermark
+        cv2.putText(fused_frame, "HETEROGENEOUS PIPELINE: YOLO + FAST-SCNN", (10, 30), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+        
+        # Write the fused frame to the MP4
+        self.video_writer.write(fused_frame)
 
     def destroy_node(self):
-        # Ensure the video file saves cleanly when you kill the node (Ctrl+C)
+        # Guarantee the video file saves cleanly when Ctrl+C is pressed
+        self.get_logger().info("Saving and finalizing video file...")
         if self.video_writer is not None:
             self.video_writer.release()
-            self.get_logger().info(f"Successfully saved {self.output_filename}")
         super().destroy_node()
 
 def main(args=None):
     rclpy.init(args=args)
-    node = PresentationExporter()
+    node = UnifiedPresentationExporter()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
-        pass # Allow clean exit on Ctrl+C
+        pass
     finally:
         node.destroy_node()
         rclpy.shutdown()

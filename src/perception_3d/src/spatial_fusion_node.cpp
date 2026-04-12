@@ -2,6 +2,7 @@
 #include <sensor_msgs/msg/image.hpp>
 #include <sensor_msgs/msg/camera_info.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
+#include <std_msgs/msg/float32_multi_array.hpp> // REQUIRED FOR HAPTICS
 #include <cv_bridge/cv_bridge.h>
 #include <image_geometry/pinhole_camera_model.h>
 #include <pcl_conversions/pcl_conversions.h>
@@ -16,6 +17,9 @@ public:
         // Publishers
         semantic_pc_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("fusion/semantic_cloud", 10);
         
+        // NEW: The crucial publisher that actually triggers the haptic motors
+        dist_pub_ = this->create_publisher<std_msgs::msg::Float32MultiArray>("/planner/obstacle_distances", 10);
+        
         // Subscribers
         info_sub_ = this->create_subscription<sensor_msgs::msg::CameraInfo>(
             "camera/depth/camera_info", 10, std::bind(&SpatialFusionNode::info_cb, this, _1));
@@ -26,7 +30,7 @@ public:
         pc_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
             "perception/point_cloud", 10, std::bind(&SpatialFusionNode::pc_cb, this, _1));
             
-        RCLCPP_INFO(this->get_logger(), "Spatial Fusion Node Initialized: Ready to merge 2D AI with 3D Space");
+        RCLCPP_INFO(this->get_logger(), "Spatial Fusion Node Initialized: 3D Mapping & Haptic Routing Online");
     }
 
 private:
@@ -45,7 +49,6 @@ private:
 
     void pc_cb(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
         if (!has_cam_info_ || latest_mask_.empty()) {
-            RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000, "Waiting for Camera Info and Fast-SCNN Mask...");
             return;
         }
 
@@ -55,10 +58,27 @@ private:
         pcl::PointCloud<pcl::PointXYZRGB>::Ptr semantic_cloud(new pcl::PointCloud<pcl::PointXYZRGB>());
         semantic_cloud->header = cloud_in->header;
 
+        // Initialize haptic distance tracking (Max range 3.0 meters)
+        float min_left = 3.0f;
+        float min_center = 3.0f;
+        float min_right = 3.0f;
+
         for (const auto& pt : cloud_in->points) {
             if (!std::isfinite(pt.z)) continue;
 
-            // Project 3D point (XYZ) back to 2D pixel (u, v)
+            // --- 1. SPATIAL SLICING FOR HAPTICS ---
+            // Ignore the floor (pt.y > 0.5) and ceiling (pt.y < -0.5) to avoid false vibrations
+            if (pt.y > -0.5 && pt.y < 0.5) {
+                if (pt.x < -0.3) { // Left Zone
+                    if (pt.z < min_left) min_left = pt.z;
+                } else if (pt.x > 0.3) { // Right Zone
+                    if (pt.z < min_right) min_right = pt.z;
+                } else { // Center Zone
+                    if (pt.z < min_center) min_center = pt.z;
+                }
+            }
+
+            // --- 2. SEMANTIC COLOR MAPPING FOR VISUALIZATION ---
             cv::Point3d pt_3d(pt.x, pt.y, pt.z);
             cv::Point2d pt_2d = cam_model_.project3dToPixel(pt_3d);
 
@@ -80,13 +100,20 @@ private:
             }
         }
 
+        // Publish Colorized Point Cloud
         sensor_msgs::msg::PointCloud2 out_msg;
         pcl::toROSMsg(*semantic_cloud, out_msg);
         out_msg.header = msg->header;
         semantic_pc_pub_->publish(out_msg);
+
+        // Publish Distances to trigger Haptic Motors
+        std_msgs::msg::Float32MultiArray dist_msg;
+        dist_msg.data = {min_left, min_center, min_right};
+        dist_pub_->publish(dist_msg);
     }
 
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr semantic_pc_pub_;
+    rclcpp::Publisher<std_msgs::msg::Float32MultiArray>::SharedPtr dist_pub_;
     rclcpp::Subscription<sensor_msgs::msg::CameraInfo>::SharedPtr info_sub_;
     rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr mask_sub_;
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr pc_sub_;

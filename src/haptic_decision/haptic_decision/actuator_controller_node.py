@@ -1,62 +1,83 @@
 #!/usr/bin/env python3
+
 import rclpy
 from rclpy.node import Node
-import random
+from std_msgs.msg import Float32MultiArray
+import time
 
-class HapticControllerNode(Node):
+# Attempt to import Orange Pi GPIO library
+try:
+    import wiringpi
+    from wiringpi import GPIO
+    WIRINGPI_AVAILABLE = True
+except ImportError:
+    WIRINGPI_AVAILABLE = False
+
+class HapticActuatorNode(Node):
     def __init__(self):
-        super().__init__('actuator_controller_node')
+        super().__init__('haptic_actuator_controller')
         
-        self.declare_parameter('user_mode', 'beginner')
-        self.timer = self.create_timer(2.0, self.simulate_environment_perception)
+        # Subscribe to the 3D Mapping/Planner distances [Left, Center, Right] in meters
+        self.subscription = self.create_subscription(
+            Float32MultiArray,
+            '/planner/obstacle_distances',
+            self.distance_callback,
+            10
+        )
         
-        self.get_logger().info("Corrected Dual-Tactile Language System Initialized.")
-        self.get_logger().info(f"Current Mode: {self.get_parameter('user_mode').value.upper()}")
-
-    def calculate_haptic_feedback(self, angle_deg, distance_meters, mode):
-        pressure_intensity = max(0, min(100, int((3.0 - distance_meters) / 2.5 * 100)))
-
-        if angle_deg < -15:
-            vibration_pattern = "Buzz Right Side (Turn Right)"
-        elif angle_deg > 15:
-            vibration_pattern = "Buzz Left Side (Turn Left)"
+        # Orange Pi Hardware PWM Pins (Example pins, adjust to your physical wiring)
+        self.PIN_LEFT = 2   # wiringOP pin 2
+        self.PIN_CENTER = 3 # wiringOP pin 3
+        self.PIN_RIGHT = 4  # wiringOP pin 4
+        
+        if WIRINGPI_AVAILABLE:
+            self.get_logger().info("wiringOP detected. Hardware Haptics ONLINE.")
+            wiringpi.wiringPiSetup()
+            wiringpi.pinMode(self.PIN_LEFT, GPIO.PWM_OUTPUT)
+            wiringpi.pinMode(self.PIN_CENTER, GPIO.PWM_OUTPUT)
+            wiringpi.pinMode(self.PIN_RIGHT, GPIO.PWM_OUTPUT)
         else:
-            vibration_pattern = "Double Pulse Both Sides (Stop/Turn Around)"
+            self.get_logger().warn("wiringOP missing! Running in Software Simulation Mode.")
 
-        if mode == 'advanced':
-            if distance_meters > 1.5:
-                return "SUPPRESSED (Advanced Mode - Object is far enough away)"
-            vibration_pattern += " [Short burst]" 
+    def distance_callback(self, msg):
+        # Expecting msg.data = [left_dist, center_dist, right_dist]
+        if len(msg.data) < 3:
+            return
+            
+        left_dist, center_dist, right_dist = msg.data
+        
+        # Convert Distance (Meters) to PWM Vibration Intensity (0-1024)
+        # Assuming max range is 3.0 meters. Closer = Stronger vibration.
+        pwm_left = self.calculate_pwm(left_dist)
+        pwm_center = self.calculate_pwm(center_dist)
+        pwm_right = self.calculate_pwm(right_dist)
+        
+        if WIRINGPI_AVAILABLE:
+            wiringpi.pwmWrite(self.PIN_LEFT, pwm_left)
+            wiringpi.pwmWrite(self.PIN_CENTER, pwm_center)
+            wiringpi.pwmWrite(self.PIN_RIGHT, pwm_right)
+            
+        self.get_logger().info(f"Haptic Output -> L: {pwm_left/10}% | C: {pwm_center/10}% | R: {pwm_right/10}%")
 
-        return f"PWM_VIB: {vibration_pattern} | PWM_PRESS: {pressure_intensity}%"
-
-    def simulate_environment_perception(self):
-        """Simulates path planning data for performance testing"""
-        mode = self.get_parameter('user_mode').value
+    def calculate_pwm(self, distance_meters):
+        max_dist = 3.0 # Objects beyond 3 meters don't trigger vibration
+        safe_dist = 0.5 # Objects closer than 0.5 meters trigger MAXIMUM vibration
         
-        angle = round(random.uniform(-45.0, 45.0), 1)
-        distance = round(random.uniform(0.5, 3.0), 2)
-        
-        self.get_logger().info(f"--- Threat Detected: {distance}m away at {angle} degrees ---")
-        
-        haptic_command = self.calculate_haptic_feedback(angle, distance, mode)
-        
-        if "SUPPRESSED" in haptic_command:
-            self.get_logger().info(f"Haptic Output: {haptic_command}\n")
+        if distance_meters >= max_dist:
+            return 0
+        elif distance_meters <= safe_dist:
+            return 1024 # Max PWM
         else:
-            self.get_logger().info(f"\033[1;32mHaptic Output: -> {haptic_command}\033[0m\n")
-
+            # Linear scaling between 0.5m and 3.0m
+            intensity = 1.0 - ((distance_meters - safe_dist) / (max_dist - safe_dist))
+            return int(intensity * 1024)
 
 def main(args=None):
     rclpy.init(args=args)
-    node = HapticControllerNode()
-    try:
-        rclpy.spin(node)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        node.destroy_node()
-        rclpy.shutdown()
+    node = HapticActuatorNode()
+    rclpy.spin(node)
+    node.destroy_node()
+    rclpy.shutdown()
 
 if __name__ == '__main__':
     main()

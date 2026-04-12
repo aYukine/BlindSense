@@ -1,83 +1,104 @@
 #!/usr/bin/env python3
+
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
+from cv_bridge import CvBridge
+import cv2
 import numpy as np
+import acl
 import time
 
-# ONLY MindSpore gets loaded at the system level
-import mindspore_lite as mslite
-
-class FastScnnAscendNode(Node):
+class FastScnnBareMetalNode(Node):
     def __init__(self):
         super().__init__('fast_scnn_segmenter')
-        
-        self.declare_parameter('model_path', 'src/ai_inference/models/converted/fast_scnn_finetune_106.mindir')
-        model_file = self.get_parameter('model_path').value
-        
-        self.get_logger().info(f"Loading MINDIR via MindSpore LITE: {model_file}...")
-        
-        # --- 1. INITIALIZE HARDWARE FIRST ---
-        # Because CV2 doesn't exist yet, there is no Protobuf collision!
-        context = mslite.Context()
-        context.target = ["ascend"]
-        context.ascend.device_id = 0
-        
-        self.model = mslite.Model()
-        self.model.build_from_file(model_file, mslite.ModelType.MINDIR, context)
-        self.get_logger().info("Fast-SCNN loaded onto Ascend NPU successfully!")
-
-        # --- 2. LAZY-LOAD OPENCV SECOND ---
-        # Now that the NPU is locked in, we safely load the image tools.
-        from cv_bridge import CvBridge
-        import cv2
-        self.cv2 = cv2
         self.bridge = CvBridge()
         
-        # Setup ROS communications
+        self.get_logger().info("Initializing Ascend NPU for Fast-SCNN...")
+        acl.init()
+        self.device_id = 0
+        acl.rt.set_device(self.device_id)
+        self.npu_context, _ = acl.rt.create_context(self.device_id)
+        
+        # Load Model (MUST BE .om FORMAT)
+        model_path = "src/ai_inference/models/converted/fast_scnn_finetune_106.om"
+        self.model_id, _ = acl.mdl.load_from_file(model_path)
+        self.model_desc = acl.mdl.create_desc()
+        acl.mdl.get_desc(self.model_desc, self.model_id)
+        
+        # --- PRE-ALLOCATE MEMORY ---
+        self.input_size = acl.mdl.get_input_size_by_index(self.model_desc, 0)
+        self.input_ptr, _ = acl.rt.malloc(self.input_size, 2)
+        self.input_dataset = acl.mdl.create_dataset()
+        self.input_buffer = acl.create_data_buffer(self.input_ptr, self.input_size)
+        acl.mdl.add_dataset_buffer(self.input_dataset, self.input_buffer)
+
+        self.output_size = acl.mdl.get_output_size_by_index(self.model_desc, 0)
+        self.output_ptr, _ = acl.rt.malloc(self.output_size, 2)
+        self.output_dataset = acl.mdl.create_dataset()
+        self.output_buffer = acl.create_data_buffer(self.output_ptr, self.output_size)
+        acl.mdl.add_dataset_buffer(self.output_dataset, self.output_buffer)
+
         self.subscription = self.create_subscription(Image, 'camera/image_raw', self.image_callback, 10)
         self.publisher_ = self.create_publisher(Image, 'inference/segmentation_mask', 10)
+        
+        self.get_logger().info("🚀 Bare-Metal Fast-SCNN Online!")
 
     def image_callback(self, msg):
         start_time = time.time()
+        cv_image = self.bridge.imgmsg_to_cv2(msg, "bgr8")
+        orig_h, orig_w = cv_image.shape[:2]
         
-        frame = self.bridge.imgmsg_to_cv2(msg, "bgr8")
-        orig_h, orig_w = frame.shape[:2]
+        # Preprocess (Resize to 1280x720, RGB, Normalized, CHW)
+        img_resized = cv2.resize(cv_image, (1280, 720))
+        img_rgb = cv2.cvtColor(img_resized, cv2.COLOR_BGR2RGB)
+        img_data = np.array(img_rgb, dtype=np.float32) / 255.0
+        img_data = np.transpose(img_data, (2, 0, 1)).copy()
         
-        # Preprocess
-        img = self.cv2.resize(frame, (1280, 720))
-        img = self.cv2.cvtColor(img, self.cv2.COLOR_BGR2RGB)
-        img = img.astype(np.float32) / 255.0 
-        img = np.transpose(img, (2, 0, 1))
-        img = np.expand_dims(img, axis=0)
-        
-        # Load Tensor and Run NPU Inference
-        inputs = self.model.get_inputs()
-        inputs[0].set_data_from_numpy(img)
-        outputs = self.model.predict(inputs)
-        
-        # Postprocess
-        out_tensor = outputs[0].get_data_to_numpy()
-        class_indices = np.argmax(out_tensor, axis=1)[0]
-        
+        # Memory Copy: Host -> Device
+        bytes_ptr = acl.util.numpy_to_ptr(img_data)
+        acl.rt.memcpy(self.input_ptr, self.input_size, bytes_ptr, self.input_size, 1)
+
+        # Execute on NPU
+        acl.mdl.execute(self.model_id, self.input_dataset, self.output_dataset)
+
+        # Memory Copy: Device -> Host
+        # Fast-SCNN usually outputs (1, Num_Classes, H, W). Adjust 3 if you have more classes.
+        raw_output = np.zeros((1, 3, 720, 1280), dtype=np.float32) 
+        host_ptr = acl.util.numpy_to_ptr(raw_output)
+        acl.rt.memcpy(host_ptr, self.output_size, self.output_ptr, self.output_size, 2) 
+
+        # Postprocess (Argmax and Coloring)
+        class_indices = np.argmax(raw_output[0], axis=0)
         color_mask = np.zeros((720, 1280, 3), dtype=np.uint8)
         color_mask[class_indices == 1] = [0, 255, 0] # Class 1 (Green)
         color_mask[class_indices == 2] = [0, 0, 255] # Class 2 (Red)
         
-        color_mask_resized = self.cv2.resize(color_mask, (orig_w, orig_h), interpolation=self.cv2.INTER_NEAREST)
-        blended = self.cv2.addWeighted(frame, 0.7, color_mask_resized, 0.5, 0)
+        color_mask_resized = cv2.resize(color_mask, (orig_w, orig_h), interpolation=cv2.INTER_NEAREST)
+        blended = cv2.addWeighted(cv_image, 0.7, color_mask_resized, 0.5, 0)
         
         latency_ms = (time.time() - start_time) * 1000
-        self.cv2.putText(blended, f"MS-Lite NPU Latency: {latency_ms:.1f}ms", (10, 30), self.cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+        cv2.putText(blended, f"NPU Fast-SCNN: {latency_ms:.1f}ms", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 255), 2)
         
-        out_msg = self.bridge.cv2_to_imgmsg(blended, "bgr8")
-        self.publisher_.publish(out_msg)
+        self.publisher_.publish(self.bridge.cv2_to_imgmsg(blended, "bgr8"))
+
+    def destroy_node(self):
+        self.get_logger().info("Freeing NPU Memory...")
+        acl.mdl.destroy_dataset(self.input_dataset)
+        acl.mdl.destroy_dataset(self.output_dataset)
+        acl.destroy_data_buffer(self.input_buffer)
+        acl.destroy_data_buffer(self.output_buffer)
+        acl.rt.free(self.input_ptr)
+        acl.rt.free(self.output_ptr)
+        acl.mdl.unload(self.model_id)
+        acl.rt.destroy_context(self.npu_context)
+        acl.rt.reset_device(self.device_id)
+        acl.finalize()
+        super().destroy_node()
 
 def main(args=None):
     rclpy.init(args=args)
-    node = FastScnnAscendNode()
-    rclpy.spin(node)
-    node.destroy_node()
+    rclpy.spin(FastScnnBareMetalNode())
     rclpy.shutdown()
 
 if __name__ == '__main__':
