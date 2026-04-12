@@ -9,34 +9,38 @@
 #include <pcl/point_types.h>
 
 using std::placeholders::_1;
-using std::placeholders::_2;
 
 class DepthEstimatorNode : public rclcpp::Node {
 public:
     DepthEstimatorNode() : Node("depth_estimator_node") {
-        // Publishers and Subscribers
         pc_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("perception/point_cloud", 10);
         
-        // We need both the depth image and the camera info to project 2D to 3D
         depth_sub_ = this->create_subscription<sensor_msgs::msg::Image>(
             "camera/depth/image_rect_raw", 10, std::bind(&DepthEstimatorNode::depth_cb, this, _1));
         info_sub_ = this->create_subscription<sensor_msgs::msg::CameraInfo>(
             "camera/depth/camera_info", 10, std::bind(&DepthEstimatorNode::info_cb, this, _1));
             
-        RCLCPP_INFO(this->get_logger(), "Depth Estimator Node Initialized (PCL backend)");
+        RCLCPP_INFO(this->get_logger(), "Depth Estimator Node Initialized (High-Speed CPU Math Mode)");
     }
 
 private:
     void info_cb(const sensor_msgs::msg::CameraInfo::SharedPtr msg) {
-        cam_model_.fromCameraInfo(msg);
-        has_cam_info_ = true;
+        if (!has_cam_info_) {
+            cam_model_.fromCameraInfo(msg);
+            
+            // CACHE INTRINSICS: Do this once, not 2.3 million times a second!
+            fx_ = cam_model_.fx();
+            fy_ = cam_model_.fy();
+            cx_ = cam_model_.cx();
+            cy_ = cam_model_.cy();
+            
+            has_cam_info_ = true;
+            RCLCPP_INFO(this->get_logger(), "Camera Intrinsics Locked. Ready for 3D Projection.");
+        }
     }
 
     void depth_cb(const sensor_msgs::msg::Image::SharedPtr msg) {
-        if (!has_cam_info_) {
-            RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000, "Waiting for camera info...");
-            return;
-        }
+        if (!has_cam_info_) return;
 
         cv_bridge::CvImagePtr cv_ptr;
         try {
@@ -50,19 +54,25 @@ private:
         cloud->header.frame_id = msg->header.frame_id;
         pcl_conversions::toPCL(msg->header.stamp, cloud->header.stamp);
 
+        // PRE-ALLOCATE MEMORY: Prevents the CPU from pausing to request RAM thousands of times per frame
+        cloud->points.reserve((cv_ptr->image.rows / 2) * (cv_ptr->image.cols / 2));
+
         for (int v = 0; v < cv_ptr->image.rows; v += 2) { 
             for (int u = 0; u < cv_ptr->image.cols; u += 2) {
                 uint16_t depth = cv_ptr->image.at<uint16_t>(v, u);
-                if (depth == 0) continue; 
+                
+                // FILTER: Ignore blind spots (0) and objects beyond 4 meters (4000mm)
+                if (depth == 0 || depth > 4000) continue; 
 
                 float z = depth * 0.001f; 
-                cv::Point2d pt_cv(u, v);
-                cv::Point3d pt_3d = cam_model_.projectPixelTo3dRay(pt_cv);
-
+                
+                // --- OPTIMIZED ARM MATH ---
+                // Replaced the heavy matrix projection with direct scalar math
                 pcl::PointXYZ pt;
-                pt.x = pt_3d.x * z;
-                pt.y = pt_3d.y * z;
+                pt.x = (u - cx_) * z / fx_;
+                pt.y = (v - cy_) * z / fy_;
                 pt.z = z;
+                
                 cloud->points.push_back(pt);
             }
         }
@@ -79,6 +89,9 @@ private:
     
     image_geometry::PinholeCameraModel cam_model_;
     bool has_cam_info_ = false;
+    
+    // Cached Intrinsics
+    float fx_, fy_, cx_, cy_;
 };
 
 int main(int argc, char **argv) {
