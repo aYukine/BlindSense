@@ -19,6 +19,8 @@ from collections import deque
 class YoloBareMetalNode(Node):
     def __init__(self):
         super().__init__('yolo_detector')
+        self.declare_parameter('benchmark_mode', False)
+        self.benchmark_mode = self.get_parameter('benchmark_mode').get_parameter_value().bool_value
         self.bridge = CvBridge()
         
         self.custom_qos = QoSProfile(
@@ -68,6 +70,14 @@ class YoloBareMetalNode(Node):
         self._init_csv_logger()
         self._start_npu_monitor()
         
+        # Force benchmark mode ON to isolate NPU from Python post-processing
+        self.benchmark_mode = True
+        # Pre-allocate output buffer to stop per-frame np.zeros() & tobytes() GC spikes
+        self.raw_output = np.zeros((1, 14, 8400), dtype=np.float32)
+        self.output_host_ptr = acl.util.bytes_to_ptr(self.raw_output.tobytes())
+        
+        self.get_logger().info(f"NPU Benchmark Mode: {self.benchmark_mode}")
+        
         self.get_logger().info("🚀 Bare-Metal YOLO Online!")
 
     def image_callback(self, msg):
@@ -84,9 +94,39 @@ class YoloBareMetalNode(Node):
         acl.mdl.execute(self.model_id, self.input_dataset, self.output_dataset)
 
         # Memory Copy: Device -> Host
-        raw_output = np.zeros((1, 14, 8400), dtype=np.float32)
-        host_ptr = acl.util.bytes_to_ptr(raw_output.tobytes())
-        acl.rt.memcpy(host_ptr, self.output_size, self.output_ptr, self.output_size, 2) 
+        acl.rt.memcpy(self.output_host_ptr, self.output_size, self.output_ptr, self.output_size, 2)
+        raw_output = self.raw_output  
+        
+        if self.benchmark_mode:
+            # Synchronize to ensure NPU work is complete
+            acl.rt.synchronize_stream()
+            npu_only_latency = (time.perf_counter() - start_time) * 1000
+            
+            # Log raw NPU timing
+            self.get_logger().info(f"⚡ NPU RAW EXEC: {npu_only_latency:.2f}ms (No CPU post-processing)")
+            
+            # Publish image with NPU timing overlay
+            cv2.putText(cv_image, f"NPU RAW: {npu_only_latency:.1f}ms (Benchmark)", 
+                       (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
+            out_msg = self.bridge.cv2_to_imgmsg(cv_image, "bgr8")
+            out_msg.header = msg.header
+            self.publisher_.publish(out_msg)
+            
+            # Update metrics with NPU-only latency
+            self.latencies.append(npu_only_latency)
+            self.frame_idx += 1
+            self.fps_count += 1
+            
+            if self.frame_idx % 30 == 0:
+                current_time = time.time()
+                elapsed = current_time - self.fps_start
+                current_fps = self.fps_count / elapsed if elapsed > 0 else 0.0
+                avg_lat = sum(self.latencies) / len(self.latencies)
+                self.fps_count = 0
+                self.fps_start = current_time
+                self._log_metrics(avg_lat, current_fps)
+            
+            return
 
         # Postprocess
         preds = raw_output[0].T 
@@ -156,15 +196,20 @@ class YoloBareMetalNode(Node):
     def _monitor_npu(self):
         while hasattr(self, '_npu_monitor_running') and self._npu_monitor_running:
             try:
-                res = subprocess.run(['npu-smi', 'info', '-t', 'usages,temperature', '-i', '0'], capture_output=True, text=True, timeout=2)
+                res = subprocess.run(['npu-smi', 'info', '-t', 'usages,temperature', '-i', '0'],
+                                     capture_output=True, text=True, timeout=2)
                 if res.returncode == 0:
-                    # Simple parsing for Ascend smi output format
                     lines = res.stdout.strip().split('\n')
                     for line in lines:
-                        if 'AI Core' in line:
-                            self.npu_usage = float(re.search(r'(\d+)%', line).group(1))
-                        if 'Temp' in line or 'temperature' in line.lower():
-                            self.npu_temp = float(re.search(r'(\d+)', line).group(1))
+                        # Parse table rows: "NPU ID | Utilization | Temperature" or similar
+                        parts = [p.strip() for p in line.replace('|', ' ').split()]
+                        if len(parts) >= 3 and parts[0].isdigit():
+                            # Utilization: strip '%' and convert
+                            util_str = parts[1].replace('%', '').replace('Unknown', '0')
+                            temp_str = parts[2].replace('°C', '').replace('C', '').replace('Unknown', '0')
+                            self.npu_usage = float(util_str) if util_str.isdigit() else 0.0
+                            self.npu_temp = float(temp_str) if temp_str.isdigit() else 0.0
+                            break
             except Exception:
                 pass
             time.sleep(0.5)
