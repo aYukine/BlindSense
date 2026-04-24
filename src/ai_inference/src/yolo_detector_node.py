@@ -99,7 +99,7 @@ class YoloBareMetalNode(Node):
         
         if self.benchmark_mode:
             # Synchronize to ensure NPU work is complete
-            acl.rt.synchronize_stream()
+            # acl.rt.synchronize_stream()
             npu_only_latency = (time.perf_counter() - start_time) * 1000
             
             # Log raw NPU timing
