@@ -1,0 +1,137 @@
+[INFO] [launch]: All log files can be found below /home/HwHiAiUser/.ros/log/2026-04-13-14-25-27-526981-orangepiaipro-33774
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [video_streamer-1]: process started with pid [33779]
+[INFO] [yolo_detector_node.py-2]: process started with pid [33781]
+[INFO] [fast_scnn_segmenter_node.py-3]: process started with pid [33783]
+[INFO] [depth_estimator_node-4]: process started with pid [33785]
+[INFO] [spatial_fusion_node-5]: process started with pid [33787]
+[INFO] [actuator_controller_node.py-6]: process started with pid [33789]
+[INFO] [metric_logger.py-7]: process started with pid [33791]
+[INFO] [presentation_exporter.py-8]: process started with pid [33793]
+[spatial_fusion_node-5] [INFO] [1776061528.425564601] [spatial_fusion]: Spatial Fusion Node Initialized: 3D Mapping & Haptic Routing Online
+[depth_estimator_node-4] [INFO] [1776061528.576345111] [depth_estimator]: Depth Estimator Node Initialized (High-Speed CPU Math Mode)
+[actuator_controller_node.py-6] [WARN] [1776061530.008448199] [actuator_controller]: wiringOP missing! Running in Software Simulation Mode.
+[fast_scnn_segmenter_node.py-3] Traceback (most recent call last):
+[fast_scnn_segmenter_node.py-3]   File "/home/HwHiAiUser/Documents/edge_ai_ws/install/ai_inference/lib/ai_inference/fast_scnn_segmenter_node.py", line 9, in <module>
+[fast_scnn_segmenter_node.py-3]     import acl
+[fast_scnn_segmenter_node.py-3] ImportError: /usr/local/Ascend/ascend-toolkit/latest/lib64/libacl_dvpp.so: undefined symbol: _ZN3acl18AclErrorLogManagerD1Ev
+[ERROR] [fast_scnn_segmenter_node.py-3]: process has died [pid 33783, exit code 1, cmd '/home/HwHiAiUser/Documents/edge_ai_ws/install/ai_inference/lib/ai_inference/fast_scnn_segmenter_node.py --ros-args -r __node:=fast_scnn_segmenter'].
+[metric_logger.py-7] [INFO] [1776061531.583307435] [metric_logger]: Metrics -> ARM CPU: 75.5% | ARM RAM: 20.3% || NPU -> AI Core: 0% | NPU Mem: 85%
+[yolo_detector_node.py-2] Traceback (most recent call last):
+[presentation_exporter.py-8] [INFO] [1776061531.920709996] [presentation_exporter]: Waiting for synchronized AI frames...
+[yolo_detector_node.py-2]   File "/home/HwHiAiUser/Documents/edge_ai_ws/install/ai_inference/lib/ai_inference/yolo_detector_node.py", line 9, in <module>
+[yolo_detector_node.py-2]     import acl
+[yolo_detector_node.py-2] ImportError: /usr/local/Ascend/ascend-toolkit/latest/lib64/libacl_dvpp.so: undefined symbol: _ZN3acl18AclErrorLogManagerD1Ev
+[ERROR] [yolo_detector_node.py-2]: process has died [pid 33781, exit code 1, cmd '/home/HwHiAiUser/Documents/edge_ai_ws/install/ai_inference/lib/ai_inference/yolo_detector_node.py --ros-args -r __node:=yolo_detector'].
+[video_streamer-1] Traceback (most recent call last):
+[video_streamer-1]   File "/home/HwHiAiUser/Documents/edge_ai_ws/install/data_ingestion/lib/data_ingestion/video_streamer", line 33, in <module>
+[video_streamer-1]     sys.exit(load_entry_point('data-ingestion', 'console_scripts', 'video_streamer')())
+[video_streamer-1]   File "/home/HwHiAiUser/Documents/edge_ai_ws/install/data_ingestion/lib/data_ingestion/video_streamer", line 25, in importlib_load_entry_point
+[video_streamer-1]     return next(matches).load()
+[video_streamer-1]   File "/usr/lib/python3.10/importlib/metadata/__init__.py", line 171, in load
+[video_streamer-1]     module = import_module(match.group('module'))
+[video_streamer-1]   File "/usr/lib/python3.10/importlib/__init__.py", line 126, in import_module
+[video_streamer-1]     return _bootstrap._gcd_import(name[level:], package, level)
+[video_streamer-1]   File "<frozen importlib._bootstrap>", line 1050, in _gcd_import
+[video_streamer-1]   File "<frozen importlib._bootstrap>", line 1027, in _find_and_load
+[video_streamer-1]   File "<frozen importlib._bootstrap>", line 1006, in _find_and_load_unlocked
+[video_streamer-1]   File "<frozen importlib._bootstrap>", line 688, in _load_unlocked
+[video_streamer-1]   File "<frozen importlib._bootstrap_external>", line 883, in exec_module
+[video_streamer-1]   File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+[video_streamer-1]   File "/home/HwHiAiUser/Documents/edge_ai_ws/build/data_ingestion/data_ingestion/video_streamer.py", line 9, in <module>
+[video_streamer-1]     from videocapture import VideoCapture
+[video_streamer-1]   File "/home/HwHiAiUser/Documents/edge_ai_ws/build/data_ingestion/data_ingestion/acllite/videocapture.py", line 4, in <module>
+[video_streamer-1]     import acl
+[video_streamer-1] ImportError: /usr/local/Ascend/ascend-toolkit/latest/lib64/libacl_dvpp.so: undefined symbol: _ZN3acl18AclErrorLogManagerD1Ev
+[metric_logger.py-7] [INFO] [1776061532.553875636] [metric_logger]: Metrics -> ARM CPU: 75.3% | ARM RAM: 20.7% || NPU -> AI Core: 0% | NPU Mem: 86%
+[ERROR] [video_streamer-1]: process has died [pid 33779, exit code 1, cmd '/home/HwHiAiUser/Documents/edge_ai_ws/install/data_ingestion/lib/data_ingestion/video_streamer --ros-args -r __node:=video_streamer'].
+[depth_estimator_node-4] [INFO] [1776061533.238737673] [depth_estimator]: Camera Intrinsics Locked. Ready for 3D Projection.
+[metric_logger.py-7] [INFO] [1776061533.262986612] [metric_logger]: Metrics -> ARM CPU: 70.7% | ARM RAM: 22.4% || NPU -> AI Core: 0% | NPU Mem: 87%
+[metric_logger.py-7] [INFO] [1776061534.496074494] [metric_logger]: Metrics -> ARM CPU: 50.5% | ARM RAM: 23.7% || NPU -> AI Core: 0% | NPU Mem: 88%
+[metric_logger.py-7] [INFO] [1776061535.493910823] [metric_logger]: Metrics -> ARM CPU: 74.6% | ARM RAM: 23.7% || NPU -> AI Core: 0% | NPU Mem: 88%
+[metric_logger.py-7] [INFO] [1776061536.402011817] [metric_logger]: Metrics -> ARM CPU: 73.9% | ARM RAM: 23.9% || NPU -> AI Core: 0% | NPU Mem: 88%
+[metric_logger.py-7] [INFO] [1776061537.265617316] [metric_logger]: Metrics -> ARM CPU: 59.8% | ARM RAM: 24.0% || NPU -> AI Core: 0% | NPU Mem: 88%
+[metric_logger.py-7] [INFO] [1776061538.293776060] [metric_logger]: Metrics -> ARM CPU: 55.4% | ARM RAM: 24.0% || NPU -> AI Core: 0% | NPU Mem: 89%
+[metric_logger.py-7] [INFO] [1776061539.339322725] [metric_logger]: Metrics -> ARM CPU: 59.0% | ARM RAM: 24.1% || NPU -> AI Core: 0% | NPU Mem: 89%
+[metric_logger.py-7] [INFO] [1776061540.303373676] [metric_logger]: Metrics -> ARM CPU: 56.9% | ARM RAM: 24.2% || NPU -> AI Core: 0% | NPU Mem: 89%
+[metric_logger.py-7] [INFO] [1776061541.325468332] [metric_logger]: Metrics -> ARM CPU: 60.3% | ARM RAM: 24.2% || NPU -> AI Core: 0% | NPU Mem: 89%
+[metric_logger.py-7] [INFO] [1776061542.310732128] [metric_logger]: Metrics -> ARM CPU: 57.1% | ARM RAM: 24.2% || NPU -> AI Core: 0% | NPU Mem: 89%
+[metric_logger.py-7] [INFO] [1776061543.250357935] [metric_logger]: Metrics -> ARM CPU: 55.5% | ARM RAM: 24.2% || NPU -> AI Core: 0% | NPU Mem: 89%
+[metric_logger.py-7] [INFO] [1776061544.250736939] [metric_logger]: Metrics -> ARM CPU: 55.5% | ARM RAM: 24.2% || NPU -> AI Core: 0% | NPU Mem: 89%
+[metric_logger.py-7] [INFO] [1776061545.277968708] [metric_logger]: Metrics -> ARM CPU: 53.9% | ARM RAM: 24.2% || NPU -> AI Core: 0% | NPU Mem: 89%
+[metric_logger.py-7] [INFO] [1776061546.401181539] [metric_logger]: Metrics -> ARM CPU: 57.1% | ARM RAM: 24.1% || NPU -> AI Core: 0% | NPU Mem: 89%
+[metric_logger.py-7] [INFO] [1776061547.286696511] [metric_logger]: Metrics -> ARM CPU: 59.9% | ARM RAM: 24.1% || NPU -> AI Core: 0% | NPU Mem: 89%
+[metric_logger.py-7] [INFO] [1776061548.267012176] [metric_logger]: Metrics -> ARM CPU: 54.5% | ARM RAM: 24.1% || NPU -> AI Core: 0% | NPU Mem: 89%
+[metric_logger.py-7] [INFO] [1776061549.242305490] [metric_logger]: Metrics -> ARM CPU: 55.5% | ARM RAM: 24.2% || NPU -> AI Core: 0% | NPU Mem: 89%
+[metric_logger.py-7] [INFO] [1776061550.246846265] [metric_logger]: Metrics -> ARM CPU: 53.2% | ARM RAM: 24.2% || NPU -> AI Core: 0% | NPU Mem: 89%
+[metric_logger.py-7] [INFO] [1776061551.290826814] [metric_logger]: Metrics -> ARM CPU: 53.4% | ARM RAM: 24.1% || NPU -> AI Core: 0% | NPU Mem: 89%
+[metric_logger.py-7] [INFO] [1776061552.323942545] [metric_logger]: Metrics -> ARM CPU: 54.0% | ARM RAM: 24.2% || NPU -> AI Core: 0% | NPU Mem: 89%
+[metric_logger.py-7] [INFO] [1776061553.432310025] [metric_logger]: Metrics -> ARM CPU: 60.1% | ARM RAM: 24.2% || NPU -> AI Core: 0% | NPU Mem: 89%
+[metric_logger.py-7] [INFO] [1776061554.313130702] [metric_logger]: Metrics -> ARM CPU: 66.2% | ARM RAM: 24.1% || NPU -> AI Core: 0% | NPU Mem: 89%
+[metric_logger.py-7] [INFO] [1776061555.243019259] [metric_logger]: Metrics -> ARM CPU: 56.8% | ARM RAM: 24.1% || NPU -> AI Core: 0% | NPU Mem: 89%
+[metric_logger.py-7] [INFO] [1776061556.244907234] [metric_logger]: Metrics -> ARM CPU: 55.3% | ARM RAM: 24.1% || NPU -> AI Core: 0% | NPU Mem: 89%
+[metric_logger.py-7] [INFO] [1776061557.314000006] [metric_logger]: Metrics -> ARM CPU: 54.6% | ARM RAM: 24.1% || NPU -> AI Core: 0% | NPU Mem: 89%
+[metric_logger.py-7] [INFO] [1776061558.411068859] [metric_logger]: Metrics -> ARM CPU: 55.1% | ARM RAM: 24.0% || NPU -> AI Core: 0% | NPU Mem: 88%
+[metric_logger.py-7] [INFO] [1776061559.371216435] [metric_logger]: Metrics -> ARM CPU: 63.8% | ARM RAM: 24.1% || NPU -> AI Core: 0% | NPU Mem: 89%
+[metric_logger.py-7] [INFO] [1776061560.302708059] [metric_logger]: Metrics -> ARM CPU: 57.9% | ARM RAM: 24.1% || NPU -> AI Core: 0% | NPU Mem: 89%
+[metric_logger.py-7] [INFO] [1776061561.233374086] [metric_logger]: Metrics -> ARM CPU: 54.0% | ARM RAM: 24.1% || NPU -> AI Core: 0% | NPU Mem: 89%
+[metric_logger.py-7] [INFO] [1776061562.277421379] [metric_logger]: Metrics -> ARM CPU: 55.0% | ARM RAM: 24.1% || NPU -> AI Core: 0% | NPU Mem: 89%
+[metric_logger.py-7] [INFO] [1776061563.353473955] [metric_logger]: Metrics -> ARM CPU: 59.9% | ARM RAM: 24.1% || NPU -> AI Core: 0% | NPU Mem: 89%
+[metric_logger.py-7] [INFO] [1776061564.323067412] [metric_logger]: Metrics -> ARM CPU: 61.2% | ARM RAM: 24.1% || NPU -> AI Core: 0% | NPU Mem: 89%
+[metric_logger.py-7] [INFO] [1776061565.345725471] [metric_logger]: Metrics -> ARM CPU: 57.4% | ARM RAM: 24.1% || NPU -> AI Core: 0% | NPU Mem: 89%
+[metric_logger.py-7] [INFO] [1776061566.297447038] [metric_logger]: Metrics -> ARM CPU: 55.6% | ARM RAM: 24.1% || NPU -> AI Core: 0% | NPU Mem: 89%
+[metric_logger.py-7] [INFO] [1776061567.290505193] [metric_logger]: Metrics -> ARM CPU: 56.4% | ARM RAM: 24.1% || NPU -> AI Core: 0% | NPU Mem: 89%
+[metric_logger.py-7] [INFO] [1776061568.259018053] [metric_logger]: Metrics -> ARM CPU: 56.0% | ARM RAM: 24.1% || NPU -> AI Core: 0% | NPU Mem: 89%
+[metric_logger.py-7] [INFO] [1776061569.300892440] [metric_logger]: Metrics -> ARM CPU: 52.6% | ARM RAM: 24.0% || NPU -> AI Core: 0% | NPU Mem: 89%
+[metric_logger.py-7] [INFO] [1776061570.322528526] [metric_logger]: Metrics -> ARM CPU: 54.5% | ARM RAM: 24.1% || NPU -> AI Core: 0% | NPU Mem: 89%
+[metric_logger.py-7] [INFO] [1776061571.317366485] [metric_logger]: Metrics -> ARM CPU: 53.0% | ARM RAM: 24.1% || NPU -> AI Core: 0% | NPU Mem: 89%
+[metric_logger.py-7] [INFO] [1776061572.258273025] [metric_logger]: Metrics -> ARM CPU: 55.3% | ARM RAM: 24.1% || NPU -> AI Core: 0% | NPU Mem: 89%
+[metric_logger.py-7] [INFO] [1776061573.323687589] [metric_logger]: Metrics -> ARM CPU: 58.1% | ARM RAM: 24.1% || NPU -> AI Core: 0% | NPU Mem: 88%
+[metric_logger.py-7] [INFO] [1776061574.258946442] [metric_logger]: Metrics -> ARM CPU: 48.5% | ARM RAM: 24.0% || NPU -> AI Core: 0% | NPU Mem: 88%
+[metric_logger.py-7] [INFO] [1776061575.258913149] [metric_logger]: Metrics -> ARM CPU: 46.0% | ARM RAM: 24.0% || NPU -> AI Core: 0% | NPU Mem: 88%
+[metric_logger.py-7] [INFO] [1776061576.291938589] [metric_logger]: Metrics -> ARM CPU: 45.9% | ARM RAM: 22.6% || NPU -> AI Core: 0% | NPU Mem: 86%
+[metric_logger.py-7] [INFO] [1776061577.193623655] [metric_logger]: Metrics -> ARM CPU: 27.0% | ARM RAM: 20.0% || NPU -> AI Core: 0% | NPU Mem: 84%
+[metric_logger.py-7] [INFO] [1776061578.205596361] [metric_logger]: Metrics -> ARM CPU: 5.1% | ARM RAM: 19.9% || NPU -> AI Core: 0% | NPU Mem: 84%
+[metric_logger.py-7] [INFO] [1776061579.194481884] [metric_logger]: Metrics -> ARM CPU: 5.0% | ARM RAM: 19.9% || NPU -> AI Core: 0% | NPU Mem: 84%
+[metric_logger.py-7] [INFO] [1776061580.197804920] [metric_logger]: Metrics -> ARM CPU: 4.0% | ARM RAM: 19.9% || NPU -> AI Core: 0% | NPU Mem: 84%
+[metric_logger.py-7] [INFO] [1776061581.197802193] [metric_logger]: Metrics -> ARM CPU: 4.0% | ARM RAM: 19.9% || NPU -> AI Core: 0% | NPU Mem: 84%
+[metric_logger.py-7] [INFO] [1776061582.194372512] [metric_logger]: Metrics -> ARM CPU: 5.5% | ARM RAM: 19.9% || NPU -> AI Core: 0% | NPU Mem: 84%
+[metric_logger.py-7] [INFO] [1776061583.201785106] [metric_logger]: Metrics -> ARM CPU: 5.8% | ARM RAM: 19.9% || NPU -> AI Core: 0% | NPU Mem: 84%
+[metric_logger.py-7] [INFO] [1776061584.217715746] [metric_logger]: Metrics -> ARM CPU: 21.8% | ARM RAM: 20.3% || NPU -> AI Core: 0% | NPU Mem: 85%
+[metric_logger.py-7] [INFO] [1776061585.213823833] [metric_logger]: Metrics -> ARM CPU: 29.6% | ARM RAM: 22.3% || NPU -> AI Core: 0% | NPU Mem: 87%
+[metric_logger.py-7] [INFO] [1776061586.213524487] [metric_logger]: Metrics -> ARM CPU: 28.3% | ARM RAM: 24.0% || NPU -> AI Core: 0% | NPU Mem: 89%
+[metric_logger.py-7] [INFO] [1776061587.206389345] [metric_logger]: Metrics -> ARM CPU: 29.1% | ARM RAM: 25.0% || NPU -> AI Core: 0% | NPU Mem: 91%
+[metric_logger.py-7] [INFO] [1776061588.214170513] [metric_logger]: Metrics -> ARM CPU: 27.6% | ARM RAM: 25.2% || NPU -> AI Core: 0% | NPU Mem: 91%
+[metric_logger.py-7] [INFO] [1776061589.218451560] [metric_logger]: Metrics -> ARM CPU: 29.3% | ARM RAM: 25.4% || NPU -> AI Core: 0% | NPU Mem: 91%
+[metric_logger.py-7] [INFO] [1776061590.193621347] [metric_logger]: Metrics -> ARM CPU: 26.5% | ARM RAM: 25.6% || NPU -> AI Core: 0% | NPU Mem: 91%
+[metric_logger.py-7] [INFO] [1776061591.193237403] [metric_logger]: Metrics -> ARM CPU: 4.3% | ARM RAM: 25.6% || NPU -> AI Core: 0% | NPU Mem: 91%
+[metric_logger.py-7] [INFO] [1776061592.194774801] [metric_logger]: Metrics -> ARM CPU: 4.8% | ARM RAM: 25.6% || NPU -> AI Core: 0% | NPU Mem: 91%
+[metric_logger.py-7] [INFO] [1776061593.233708040] [metric_logger]: Metrics -> ARM CPU: 5.5% | ARM RAM: 25.6% || NPU -> AI Core: 0% | NPU Mem: 92%
+[metric_logger.py-7] [INFO] [1776061594.209839452] [metric_logger]: Metrics -> ARM CPU: 30.7% | ARM RAM: 26.0% || NPU -> AI Core: 0% | NPU Mem: 92%
+[metric_logger.py-7] [INFO] [1776061595.210244694] [metric_logger]: Metrics -> ARM CPU: 28.6% | ARM RAM: 26.2% || NPU -> AI Core: 0% | NPU Mem: 92%
+[metric_logger.py-7] [INFO] [1776061596.214771527] [metric_logger]: Metrics -> ARM CPU: 29.2% | ARM RAM: 26.3% || NPU -> AI Core: 0% | NPU Mem: 92%
+[metric_logger.py-7] [INFO] [1776061597.226551417] [metric_logger]: Metrics -> ARM CPU: 31.1% | ARM RAM: 26.3% || NPU -> AI Core: 0% | NPU Mem: 92%
+[metric_logger.py-7] [INFO] [1776061598.209927321] [metric_logger]: Metrics -> ARM CPU: 24.2% | ARM RAM: 19.9% || NPU -> AI Core: 0% | NPU Mem: 86%
+[metric_logger.py-7] [INFO] [1776061599.201917688] [metric_logger]: Metrics -> ARM CPU: 5.0% | ARM RAM: 19.9% || NPU -> AI Core: 0% | NPU Mem: 86%
+[metric_logger.py-7] [INFO] [1776061600.197342141] [metric_logger]: Metrics -> ARM CPU: 4.0% | ARM RAM: 19.9% || NPU -> AI Core: 0% | NPU Mem: 86%
+[metric_logger.py-7] [INFO] [1776061601.189819851] [metric_logger]: Metrics -> ARM CPU: 3.8% | ARM RAM: 19.9% || NPU -> AI Core: 0% | NPU Mem: 86%
+[metric_logger.py-7] [INFO] [1776061602.198013235] [metric_logger]: Metrics -> ARM CPU: 5.3% | ARM RAM: 19.9% || NPU -> AI Core: 0% | NPU Mem: 86%
+[metric_logger.py-7] [INFO] [1776061603.197937017] [metric_logger]: Metrics -> ARM CPU: 4.0% | ARM RAM: 19.9% || NPU -> AI Core: 0% | NPU Mem: 86%
+[metric_logger.py-7] [INFO] [1776061604.194239738] [metric_logger]: Metrics -> ARM CPU: 5.0% | ARM RAM: 19.9% || NPU -> AI Core: 0% | NPU Mem: 86%
+[metric_logger.py-7] [INFO] [1776061605.197219198] [metric_logger]: Metrics -> ARM CPU: 4.7% | ARM RAM: 19.9% || NPU -> AI Core: 0% | NPU Mem: 86%
+[metric_logger.py-7] [INFO] [1776061606.193261943] [metric_logger]: Metrics -> ARM CPU: 7.5% | ARM RAM: 19.9% || NPU -> AI Core: 0% | NPU Mem: 86%
+[metric_logger.py-7] [INFO] [1776061607.194180224] [metric_logger]: Metrics -> ARM CPU: 5.5% | ARM RAM: 19.9% || NPU -> AI Core: 0% | NPU Mem: 86%
+[metric_logger.py-7] [INFO] [1776061608.201474074] [metric_logger]: Metrics -> ARM CPU: 4.3% | ARM RAM: 19.9% || NPU -> AI Core: 0% | NPU Mem: 86%
+[metric_logger.py-7] [INFO] [1776061609.189864081] [metric_logger]: Metrics -> ARM CPU: 4.5% | ARM RAM: 19.9% || NPU -> AI Core: 0% | NPU Mem: 86%
+[metric_logger.py-7] [INFO] [1776061610.193411819] [metric_logger]: Metrics -> ARM CPU: 4.0% | ARM RAM: 19.9% || NPU -> AI Core: 0% | NPU Mem: 86%
+[metric_logger.py-7] [INFO] [1776061611.197175260] [metric_logger]: Metrics -> ARM CPU: 4.0% | ARM RAM: 19.9% || NPU -> AI Core: 0% | NPU Mem: 86%
+[metric_logger.py-7] [INFO] [1776061612.189415026] [metric_logger]: Metrics -> ARM CPU: 5.5% | ARM RAM: 19.9% || NPU -> AI Core: 0% | NPU Mem: 86%
+[metric_logger.py-7] [INFO] [1776061613.198046120] [metric_logger]: Metrics -> ARM CPU: 3.5% | ARM RAM: 19.9% || NPU -> AI Core: 0% | NPU Mem: 86%
+[metric_logger.py-7] [INFO] [1776061614.198042565] [metric_logger]: Metrics -> ARM CPU: 4.8% | ARM RAM: 19.9% || NPU -> AI Core: 0% | NPU Mem: 86%
+[metric_logger.py-7] [INFO] [1776061615.193428918] [metric_logger]: Metrics -> ARM CPU: 4.0% | ARM RAM: 19.9% || NPU -> AI Core: 0% | NPU Mem: 86%
+[metric_logger.py-7] [INFO] [1776061616.194299604] [metric_logger]: Metrics -> ARM CPU: 3.3% | ARM RAM: 19.9% || NPU -> AI Core: 0% | NPU Mem: 86%
+[metric_logger.py-7] [INFO] [1776061617.201138420] [metric_logger]: Metrics -> ARM CPU: 5.5% | ARM RAM: 19.9% || NPU -> AI Core: 0% | NPU Mem: 86%
+[metric_logger.py-7] [INFO] [1776061618.193785911] [metric_logger]: Metrics -> ARM CPU: 3.8% | ARM RAM: 19.9% || NPU -> AI Core: 0% | NPU Mem: 86%
+[metric_logger.py-7] [INFO] [1776061619.198133332] [metric_logger]: Metrics -> ARM CPU: 5.3% | ARM RAM: 19.9% || NPU -> AI Core: 0% | NPU Mem: 86%
+[metric_logger.py-7] [INFO] [1776061620.193808959] [metric_logger]: Metrics -> ARM CPU: 8.5% | ARM RAM: 19.9% || NPU -> AI Core: 0% | NPU Mem: 86%
+[metric_logger.py-7] [INFO] [1776061621.197421107] [metric_logger]: Metrics -> ARM CPU: 5.3% | ARM RAM: 19.9% || NPU -> AI Core: 0% | NPU Mem: 86%

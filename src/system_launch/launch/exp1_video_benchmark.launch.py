@@ -81,7 +81,7 @@ def generate_launch_description():
         run_streamer_arg,
         record_mp4_arg,
         video_streamer_node,
-        yolo_node,
+        # yolo_node,
         fast_scnn_node,
         depth_estimator_node,
         spatial_fusion_node,

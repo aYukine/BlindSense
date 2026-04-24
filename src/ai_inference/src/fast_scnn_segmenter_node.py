@@ -8,11 +8,19 @@ import cv2
 import numpy as np
 import acl
 import time
+from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
+
 
 class FastScnnBareMetalNode(Node):
     def __init__(self):
         super().__init__('fast_scnn_segmenter')
         self.bridge = CvBridge()
+        
+        self.custom_qos = QoSProfile(
+            history=HistoryPolicy.KEEP_LAST,
+            depth=2,
+            reliability=ReliabilityPolicy.BEST_EFFORT
+        )
         
         self.get_logger().info("Initializing Ascend NPU for Fast-SCNN...")
         acl.init()
@@ -39,8 +47,8 @@ class FastScnnBareMetalNode(Node):
         self.output_buffer = acl.create_data_buffer(self.output_ptr, self.output_size)
         acl.mdl.add_dataset_buffer(self.output_dataset, self.output_buffer)
 
-        self.subscription = self.create_subscription(Image, '/camera/camera/color/image_raw', self.image_callback, 10)
-        self.publisher_ = self.create_publisher(Image, 'inference/segmentation_mask', 10)
+        self.subscription = self.create_subscription(Image, '/camera/camera/color/image_raw', self.image_callback, self.custom_qos)
+        self.publisher_ = self.create_publisher(Image, '/inference/segmentation_mask', self.custom_qos)
         
         self.get_logger().info("🚀 Bare-Metal Fast-SCNN Online!")
 
@@ -49,14 +57,9 @@ class FastScnnBareMetalNode(Node):
         cv_image = self.bridge.imgmsg_to_cv2(msg, "bgr8")
         orig_h, orig_w = cv_image.shape[:2]
         
-        # Preprocess (Resize to 1280x720, RGB, Normalized, CHW)
-        img_resized = cv2.resize(cv_image, (1280, 720))
-        img_rgb = cv2.cvtColor(img_resized, cv2.COLOR_BGR2RGB)
-        img_data = np.array(img_rgb, dtype=np.float32) / 255.0
-        img_data = np.transpose(img_data, (2, 0, 1)).copy()
+        img_data = cv2.dnn.blobFromImage(cv_image, scalefactor=1.0/255.0, size=(1280, 720), swapRB=True, crop=False)
         
-        # Memory Copy: Host -> Device
-        bytes_ptr = acl.util.numpy_to_ptr(img_data)
+        bytes_ptr = acl.util.bytes_to_ptr(img_data.tobytes())
         acl.rt.memcpy(self.input_ptr, self.input_size, bytes_ptr, self.input_size, 1)
 
         # Execute on NPU
@@ -65,7 +68,7 @@ class FastScnnBareMetalNode(Node):
         # Memory Copy: Device -> Host
         # Fast-SCNN usually outputs (1, Num_Classes, H, W). Adjust 3 if you have more classes.
         raw_output = np.zeros((1, 3, 720, 1280), dtype=np.float32) 
-        host_ptr = acl.util.numpy_to_ptr(raw_output)
+        host_ptr = acl.util.bytes_to_ptr(raw_output.tobytes())
         acl.rt.memcpy(host_ptr, self.output_size, self.output_ptr, self.output_size, 2) 
 
         # Postprocess (Argmax and Coloring)
@@ -78,13 +81,13 @@ class FastScnnBareMetalNode(Node):
         blended = cv2.addWeighted(cv_image, 0.7, color_mask_resized, 0.5, 0)
         
         latency_ms = (time.time() - start_time) * 1000
-        display_time = latency_ms / 8.0    # Adjust for the fact that we're processing every 8th frame to prevent bottlenecks
-        cv2.putText(blended, f"NPU Fast-SCNN: {display_time:.1f}ms", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 255), 2)
+        cv2.putText(blended, f"NPU Fast-SCNN: {latency_ms:.1f}ms", (10, 70), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 255), 2)
         
-        self.publisher_.publish(self.bridge.cv2_to_imgmsg(blended, "bgr8"))
+        out_msg = self.bridge.cv2_to_imgmsg(blended, "bgr8")
+        out_msg.header = msg.header
+        self.publisher_.publish(out_msg)
 
     def destroy_node(self):
-        self.get_logger().info("Freeing NPU Memory...")
         acl.mdl.destroy_dataset(self.input_dataset)
         acl.mdl.destroy_dataset(self.output_dataset)
         acl.destroy_data_buffer(self.input_buffer)

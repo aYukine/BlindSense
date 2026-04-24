@@ -13,14 +13,18 @@ using std::placeholders::_1;
 class DepthEstimatorNode : public rclcpp::Node {
 public:
     DepthEstimatorNode() : Node("depth_estimator_node") {
-        pc_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("perception/point_cloud", 10);
+        rclcpp::QoS sensor_qos(2);
+        sensor_qos.best_effort();
+        sensor_qos.keep_last(2);
+
+        pc_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("perception/point_cloud", sensor_qos);
         
         depth_sub_ = this->create_subscription<sensor_msgs::msg::Image>(
-            "/camera/camera/aligned_depth_to_color/image_raw", 10, std::bind(&DepthEstimatorNode::depth_cb, this, _1));
+            "/camera/camera/aligned_depth_to_color/image_raw", sensor_qos, std::bind(&DepthEstimatorNode::depth_cb, this, _1));
         info_sub_ = this->create_subscription<sensor_msgs::msg::CameraInfo>(
-            "/camera/camera/color/camera_info", 10, std::bind(&DepthEstimatorNode::info_cb, this, _1));
+            "/camera/camera/color/camera_info", sensor_qos, std::bind(&DepthEstimatorNode::info_cb, this, _1));
             
-        RCLCPP_INFO(this->get_logger(), "Depth Estimator Node Initialized (High-Speed CPU Math Mode)");
+        RCLCPP_INFO(this->get_logger(), "Depth Estimator Node Initialized");
     }
 
 private:
@@ -54,11 +58,13 @@ private:
         cloud->header.frame_id = msg->header.frame_id;
         pcl_conversions::toPCL(msg->header.stamp, cloud->header.stamp);
 
-        // PRE-ALLOCATE MEMORY: Prevents the CPU from pausing to request RAM thousands of times per frame
-        cloud->points.reserve((cv_ptr->image.rows / 2) * (cv_ptr->image.cols / 2));
+        int step = 8; 
+        
+        cloud->points.reserve((cv_ptr->image.rows / step) * (cv_ptr->image.cols / step));
 
-        for (int v = 0; v < cv_ptr->image.rows; v += 2) { 
-            for (int u = 0; u < cv_ptr->image.cols; u += 2) {
+        for (int v = 0; v < cv_ptr->image.rows; v += step) { 
+            for (int u = 0; u < cv_ptr->image.cols; u += step) {
+ 
                 uint16_t depth = cv_ptr->image.at<uint16_t>(v, u);
                 
                 // FILTER: Ignore blind spots (0) and objects beyond 4 meters (4000mm)
@@ -89,8 +95,6 @@ private:
     
     image_geometry::PinholeCameraModel cam_model_;
     bool has_cam_info_ = false;
-    
-    // Cached Intrinsics
     float fx_, fy_, cx_, cy_;
 };
 

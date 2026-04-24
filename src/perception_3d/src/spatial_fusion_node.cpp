@@ -15,20 +15,25 @@ class SpatialFusionNode : public rclcpp::Node {
 public:
     SpatialFusionNode() : Node("spatial_fusion_node") {
         // Publishers
-        semantic_pc_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("fusion/semantic_cloud", 10);
+        rclcpp::QoS sensor_qos(2);
+        sensor_qos.best_effort();
+        sensor_qos.keep_last(2);
+
+        // Publishers
+        semantic_pc_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("fusion/semantic_cloud", sensor_qos);
         
         // NEW: The crucial publisher that actually triggers the haptic motors
-        dist_pub_ = this->create_publisher<std_msgs::msg::Float32MultiArray>("/planner/obstacle_distances", 10);
+        dist_pub_ = this->create_publisher<std_msgs::msg::Float32MultiArray>("/planner/obstacle_distances", sensor_qos);
         
         // Subscribers
         info_sub_ = this->create_subscription<sensor_msgs::msg::CameraInfo>(
-            "/camera/camera/color/camera_info", 10, std::bind(&SpatialFusionNode::info_cb, this, _1));
+            "/camera/camera/color/camera_info", sensor_qos, std::bind(&SpatialFusionNode::info_cb, this, _1));
             
         mask_sub_ = this->create_subscription<sensor_msgs::msg::Image>(
-            "inference/segmentation_mask", 10, std::bind(&SpatialFusionNode::mask_cb, this, _1));
+            "inference/segmentation_mask", sensor_qos, std::bind(&SpatialFusionNode::mask_cb, this, _1));
             
         pc_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-            "perception/point_cloud", 10, std::bind(&SpatialFusionNode::pc_cb, this, _1));
+            "perception/point_cloud", sensor_qos, std::bind(&SpatialFusionNode::pc_cb, this, _1));
             
         RCLCPP_INFO(this->get_logger(), "Spatial Fusion Node Initialized: 3D Mapping & Haptic Routing Online");
     }

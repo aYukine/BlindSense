@@ -3,17 +3,29 @@
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
+from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from cv_bridge import CvBridge
 import cv2
 import numpy as np
 import acl
 import time
 import os
+import csv
+import threading
+import subprocess
+import re
+from collections import deque
 
 class YoloBareMetalNode(Node):
     def __init__(self):
         super().__init__('yolo_detector')
         self.bridge = CvBridge()
+        
+        self.custom_qos = QoSProfile(
+            history=HistoryPolicy.KEEP_LAST,
+            depth=2,
+            reliability=ReliabilityPolicy.BEST_EFFORT
+        )
         
         self.get_logger().info("Initializing Ascend NPU for YOLO...")
         acl.init()
@@ -40,25 +52,32 @@ class YoloBareMetalNode(Node):
         self.output_buffer = acl.create_data_buffer(self.output_ptr, self.output_size)
         acl.mdl.add_dataset_buffer(self.output_dataset, self.output_buffer)
 
-        self.subscription = self.create_subscription(Image, '/camera/camera/color/image_raw', self.image_callback, 10)
-        self.publisher_ = self.create_publisher(Image, 'inference/yolo_detections', 10)
+        self.subscription = self.create_subscription(Image, '/camera/camera/color/image_raw', self.image_callback, self.custom_qos)
+        self.publisher_ = self.create_publisher(Image, '/inference/yolo_detections', self.custom_qos)
         
         self.CLASS_NAMES = ["vehicle", "pedestrian", "motorcycle", "rider", "pothole", 
                             "curb", "obstacle", "crosswalk", "stair_up", "stair_down"]
+        
+        self.latencies = deque(maxlen=100)
+        self.fps_start = time.time()
+        self.fps_count = 0
+        self.frame_idx = 0
+        self.npu_usage = 0.0
+        self.npu_temp = 0.0
+        self.metrics_file = "yolo_node_metrics.csv"
+        self._init_csv_logger()
+        self._start_npu_monitor()
+        
         self.get_logger().info("🚀 Bare-Metal YOLO Online!")
 
     def image_callback(self, msg):
-        start_time = time.time()
+        start_time = time.perf_counter()
         cv_image = self.bridge.imgmsg_to_cv2(msg, "bgr8")
         orig_h, orig_w = cv_image.shape[:2]
         
-        # Preprocess
-        img_resized = cv2.resize(cv_image, (640, 640))
-        img_data = np.array(img_resized, dtype=np.float32) / 255.0
-        img_data = np.transpose(img_data, (2, 0, 1)).copy()
+        img_data = cv2.dnn.blobFromImage(cv_image, scalefactor=1.0/255.0, size=(640, 640), swapRB=True, crop=False)
         
-        # Memory Copy: Host -> Device
-        bytes_ptr = acl.util.numpy_to_ptr(img_data)
+        bytes_ptr = acl.util.bytes_to_ptr(img_data.tobytes())
         acl.rt.memcpy(self.input_ptr, self.input_size, bytes_ptr, self.input_size, 1)
 
         # Execute on NPU
@@ -66,7 +85,7 @@ class YoloBareMetalNode(Node):
 
         # Memory Copy: Device -> Host
         raw_output = np.zeros((1, 14, 8400), dtype=np.float32)
-        host_ptr = acl.util.numpy_to_ptr(raw_output)
+        host_ptr = acl.util.bytes_to_ptr(raw_output.tobytes())
         acl.rt.memcpy(host_ptr, self.output_size, self.output_ptr, self.output_size, 2) 
 
         # Postprocess
@@ -93,13 +112,69 @@ class YoloBareMetalNode(Node):
                 cv2.putText(cv_image, f"{self.CLASS_NAMES[class_ids[i]]}: {confidences[i]:.2f}", 
                             (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
         
-        latency_ms = (time.time() - start_time) * 1000
-        display_time = latency_ms / 8.0 
-        cv2.putText(cv_image, f"NPU YOLO: {display_time:.1f}ms", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-        self.publisher_.publish(self.bridge.cv2_to_imgmsg(cv_image, "bgr8"))
+        latency_ms = (time.perf_counter() - start_time) * 1000
+        self.latencies.append(latency_ms)
+        self.frame_idx += 1
+        self.fps_count += 1
+
+        if self.frame_idx % 30 == 0:
+            current_time = time.time()
+            elapsed = current_time - self.fps_start
+            current_fps = self.fps_count / elapsed if elapsed > 0 else 0.0
+            avg_lat = sum(self.latencies) / len(self.latencies)
+            self.fps_count = 0
+            self.fps_start = current_time
+            self._log_metrics(avg_lat, current_fps)
+            
+        cv2.putText(cv_image, f"NPU YOLO: {latency_ms:.1f}ms", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+        out_msg = self.bridge.cv2_to_imgmsg(cv_image, "bgr8")
+        out_msg.header = msg.header
+        self.publisher_.publish(out_msg)
+        
+    def _init_csv_logger(self):
+        with open(self.metrics_file, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(['timestamp', 'frame_idx', 'latency_ms', 'avg_latency_ms', 'effective_fps', 'npu_util_pct', 'npu_temp_c'])
+
+    def _log_metrics(self, avg_lat, fps):
+        try:
+            with open(self.metrics_file, 'a', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow([
+                    time.strftime('%Y-%m-%d %H:%M:%S'),
+                    self.frame_idx,
+                    f"{self.latencies[-1]:.2f}",
+                    f"{avg_lat:.2f}",
+                    f"{fps:.2f}",
+                    f"{self.npu_usage:.1f}",
+                    f"{self.npu_temp:.1f}"
+                ])
+            self.get_logger().info(f"📊 Frame {self.frame_idx} | FPS: {fps:.1f} | Avg Lat: {avg_lat:.1f}ms | NPU: {self.npu_usage}%/{self.npu_temp}°C")
+        except Exception as e:
+            self.get_logger().warn(f"Metric logging failed: {e}")
+
+    def _monitor_npu(self):
+        while hasattr(self, '_npu_monitor_running') and self._npu_monitor_running:
+            try:
+                res = subprocess.run(['npu-smi', 'info', '-t', 'usages,temperature', '-i', '0'], capture_output=True, text=True, timeout=2)
+                if res.returncode == 0:
+                    # Simple parsing for Ascend smi output format
+                    lines = res.stdout.strip().split('\n')
+                    for line in lines:
+                        if 'AI Core' in line:
+                            self.npu_usage = float(re.search(r'(\d+)%', line).group(1))
+                        if 'Temp' in line or 'temperature' in line.lower():
+                            self.npu_temp = float(re.search(r'(\d+)', line).group(1))
+            except Exception:
+                pass
+            time.sleep(0.5)
+
+    def _start_npu_monitor(self):
+        self._npu_monitor_running = True
+        self._npu_thread = threading.Thread(target=self._monitor_npu, daemon=True)
+        self._npu_thread.start()
 
     def destroy_node(self):
-        self.get_logger().info("Freeing NPU Memory...")
         acl.mdl.destroy_dataset(self.input_dataset)
         acl.mdl.destroy_dataset(self.output_dataset)
         acl.destroy_data_buffer(self.input_buffer)
@@ -110,6 +185,11 @@ class YoloBareMetalNode(Node):
         acl.rt.destroy_context(self.npu_context)
         acl.rt.reset_device(self.device_id)
         acl.finalize()
+        
+        self._npu_monitor_running = False
+        if hasattr(self, '_npu_thread'):
+            self._npu_thread.join(timeout=1.0)
+            
         super().destroy_node()
 
 def main(args=None):
