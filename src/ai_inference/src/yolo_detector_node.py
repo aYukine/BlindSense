@@ -38,6 +38,11 @@ class YoloBareMetalNode(Node):
         # Load Model
         model_path = "src/ai_inference/models/converted/yolo_threat_model.om"
         self.model_id, _ = acl.mdl.load_from_file(model_path)
+        
+        model_stats = os.stat(model_path)
+        self.model_size_mb = model_stats.st_size / (1024*1024)
+        self.get_logger().info(f"📦 Model: {model_path} | Size: {self.model_size_mb:.2f} MB")
+        
         self.model_desc = acl.mdl.create_desc()
         acl.mdl.get_desc(self.model_desc, self.model_id)
         
@@ -191,7 +196,15 @@ class YoloBareMetalNode(Node):
     def _init_csv_logger(self):
         with open(self.metrics_file, 'w', newline='') as f:
             writer = csv.writer(f)
-            writer.writerow(['timestamp', 'frame_idx', 'latency_ms', 'avg_latency_ms', 'effective_fps', 'npu_util_pct', 'npu_temp_c'])
+            try:
+                with open('/proc/self/status', 'r') as f:
+                    for line in f:
+                        if line.startswith('VmRSS:'):
+                            mem_mb = float(line.split()[1]) / 1024  # kB -> MB
+                            break
+            except:
+                mem_mb = 0.0
+            writer.writerow(['timestamp', 'frame_idx', 'latency_ms', 'avg_latency_ms', 'effective_fps', 'npu_util_pct', 'npu_temp_c', 'mem_mb'])
 
     def _log_metrics(self, avg_lat, fps):
         try:
