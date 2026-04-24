@@ -85,7 +85,8 @@ class YoloBareMetalNode(Node):
         cv_image = self.bridge.imgmsg_to_cv2(msg, "bgr8")
         orig_h, orig_w = cv_image.shape[:2]
         
-        img_data = cv2.dnn.blobFromImage(cv_image, scalefactor=1.0/255.0, size=(640, 640), swapRB=True, crop=False)
+        resized = cv2.resize(cv_image, (640, 640), interpolation=cv2.INTER_LINEAR)
+        img_data = (resized[:, :, ::-1].astype(np.float32) / 255.0).transpose(2, 0, 1)[np.newaxis, ...] 
         
         bytes_ptr = acl.util.bytes_to_ptr(img_data.tobytes())
         acl.rt.memcpy(self.input_ptr, self.input_size, bytes_ptr, self.input_size, 1)
@@ -129,28 +130,44 @@ class YoloBareMetalNode(Node):
             return
 
         # Postprocess
-        preds = raw_output[0].T 
-        boxes, confidences, class_ids = [], [], []
+        preds = raw_output[0].T  # Shape: (8400, 14)
         x_scale, y_scale = orig_w / 640.0, orig_h / 640.0
 
-        for pred in preds:
-            scores = pred[4:]
-            class_id = np.argmax(scores)
-            confidence = scores[class_id]
-            if confidence > 0.5:
-                cx, cy, w, h = pred[0:4]
-                x1, y1 = int((cx - w/2) * x_scale), int((cy - h/2) * y_scale)
-                boxes.append([x1, y1, int(w * x_scale), int(h * y_scale)])
-                confidences.append(float(confidence))
-                class_ids.append(class_id)
+        # Extract scores for all classes at once (vectorized)
+        scores = preds[:, 4:]  # (8400, 10)
+        class_ids = np.argmax(scores, axis=1)  # (8400,)
+        confidences = np.max(scores, axis=1)   # (8400,)
 
-        indices = cv2.dnn.NMSBoxes(boxes, confidences, 0.5, 0.4)
-        if len(indices) > 0:
-            for i in indices.flatten():
-                x, y, w, h = boxes[i]
-                cv2.rectangle(cv_image, (x, y), (x+w, y+h), (0, 0, 255), 3)
-                cv2.putText(cv_image, f"{self.CLASS_NAMES[class_ids[i]]}: {confidences[i]:.2f}", 
-                            (x, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+        # Filter by confidence threshold (vectorized boolean indexing)
+        mask = confidences > 0.5
+        filtered_preds = preds[mask]
+        filtered_conf = confidences[mask]
+        filtered_cls = class_ids[mask]
+
+        if len(filtered_preds) > 0:
+            # Decode boxes: [cx, cy, w, h] -> [x1, y1, x2, y2]
+            boxes_xywh = filtered_preds[:, :4]  # (N, 4)
+            boxes_xyxy = np.zeros_like(boxes_xywh)
+            boxes_xyxy[:, 0] = (boxes_xywh[:, 0] - boxes_xywh[:, 2]/2) * x_scale  # x1
+            boxes_xyxy[:, 1] = (boxes_xywh[:, 1] - boxes_xywh[:, 3]/2) * y_scale  # y1
+            boxes_xyxy[:, 2] = boxes_xywh[:, 2] * x_scale  # width
+            boxes_xyxy[:, 3] = boxes_xywh[:, 3] * y_scale  # height
+            
+            # Convert to list format for NMS (cv2 requires list of lists)
+            boxes_list = boxes_xyxy.astype(int).tolist()
+            conf_list = filtered_conf.tolist()
+            
+            # Run NMS (still requires cv2, but only on filtered boxes)
+            indices = cv2.dnn.NMSBoxes(boxes_list, conf_list, 0.5, 0.4)
+            
+            if len(indices) > 0:
+                for i in indices.flatten():
+                    idx = int(i)
+                    x1, y1, x2, y2 = boxes_xyxy[idx].astype(int)
+                    w, h = x2 - x1, y2 - y1
+                    cv2.rectangle(cv_image, (x1, y1), (x1+w, y1+h), (0, 0, 255), 3)
+                    cv2.putText(cv_image, f"{self.CLASS_NAMES[filtered_cls[idx]]}: {filtered_conf[idx]:.2f}",
+                               (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
         
         latency_ms = (time.perf_counter() - start_time) * 1000
         self.latencies.append(latency_ms)
@@ -196,36 +213,32 @@ class YoloBareMetalNode(Node):
     def _monitor_npu(self):
         while hasattr(self, '_npu_monitor_running') and self._npu_monitor_running:
             try:
-                # Run npu-smi and capture output
-                res = subprocess.run(
-                    ['npu-smi', 'info', '-t', 'usages,temperature', '-i', '0'],
-                    capture_output=True, text=True, timeout=2
-                )
-                if res.returncode == 0:
-                    output = res.stdout.strip()
-                    lines = output.split('\n')
-                    # Skip header lines, parse data rows
-                    for line in lines:
-                        line = line.strip()
-                        if not line or 'NPU ID' in line or '----' in line:
-                            continue
-                        # Split by whitespace or pipe, filter empty
-                        parts = [p.strip() for p in re.split(r'[\s|]+', line) if p.strip()]
-                        if len(parts) >= 3:
-                            # Typical format: [id] [util%] [temp°C] or similar
-                            # Try to find numeric % and °C patterns anywhere in the line
-                            util_match = re.search(r'(\d+(?:\.\d+)?)\s*%', line)
-                            temp_match = re.search(r'(\d+(?:\.\d+)?)\s*[°C]*', line)
-                            if util_match:
-                                self.npu_usage = float(util_match.group(1))
-                            if temp_match and 'temp' in line.lower():
-                                # Ensure it's actually a temperature value
-                                temp_val = float(temp_match.group(1))
-                                if 20 <= temp_val <= 100:  # Sanity check for NPU temp
-                                    self.npu_temp = temp_val
+                # Fetch Utilization (separate command per Orange Pi npu-smi spec)
+                res_u = subprocess.run(['npu-smi', 'info', '-t', 'usages', '-i', '0'], 
+                                       capture_output=True, text=True, timeout=2)
+                if res_u.returncode == 0:
+                    for line in res_u.stdout.split('\n'):
+                        if 'Aicore Usage Rate' in line and ':' in line:
+                            parts = line.split(':')
+                            if len(parts) >= 2:
+                                val = parts[1].strip()
+                                if val and (val.replace('.','').isdigit() or val[0].isdigit()):
+                                    self.npu_usage = float(val)
+                                break
+                # Fetch Temperature (separate command)
+                res_t = subprocess.run(['npu-smi', 'info', '-t', 'temp', '-i', '0'], 
+                                       capture_output=True, text=True, timeout=2)
+                if res_t.returncode == 0:
+                    for line in res_t.stdout.split('\n'):
+                        if 'Temperature (C)' in line and ':' in line:
+                            parts = line.split(':')
+                            if len(parts) >= 2:
+                                val = parts[1].strip()
+                                if val and (val.replace('.','').isdigit() or val[0].isdigit()):
+                                    self.npu_temp = float(val)
+                                break
             except Exception:
-                # Fail silently to avoid blocking inference thread
-                pass
+                pass  # Silent fail to avoid blocking inference thread
             time.sleep(0.5)
 
     def _start_npu_monitor(self):
