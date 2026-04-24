@@ -196,21 +196,35 @@ class YoloBareMetalNode(Node):
     def _monitor_npu(self):
         while hasattr(self, '_npu_monitor_running') and self._npu_monitor_running:
             try:
-                res = subprocess.run(['npu-smi', 'info', '-t', 'usages,temperature', '-i', '0'],
-                                     capture_output=True, text=True, timeout=2)
+                # Run npu-smi and capture output
+                res = subprocess.run(
+                    ['npu-smi', 'info', '-t', 'usages,temperature', '-i', '0'],
+                    capture_output=True, text=True, timeout=2
+                )
                 if res.returncode == 0:
-                    lines = res.stdout.strip().split('\n')
+                    output = res.stdout.strip()
+                    lines = output.split('\n')
+                    # Skip header lines, parse data rows
                     for line in lines:
-                        # Parse table rows: "NPU ID | Utilization | Temperature" or similar
-                        parts = [p.strip() for p in line.replace('|', ' ').split()]
-                        if len(parts) >= 3 and parts[0].isdigit():
-                            # Utilization: strip '%' and convert
-                            util_str = parts[1].replace('%', '').replace('Unknown', '0')
-                            temp_str = parts[2].replace('°C', '').replace('C', '').replace('Unknown', '0')
-                            self.npu_usage = float(util_str) if util_str.isdigit() else 0.0
-                            self.npu_temp = float(temp_str) if temp_str.isdigit() else 0.0
-                            break
+                        line = line.strip()
+                        if not line or 'NPU ID' in line or '----' in line:
+                            continue
+                        # Split by whitespace or pipe, filter empty
+                        parts = [p.strip() for p in re.split(r'[\s|]+', line) if p.strip()]
+                        if len(parts) >= 3:
+                            # Typical format: [id] [util%] [temp°C] or similar
+                            # Try to find numeric % and °C patterns anywhere in the line
+                            util_match = re.search(r'(\d+(?:\.\d+)?)\s*%', line)
+                            temp_match = re.search(r'(\d+(?:\.\d+)?)\s*[°C]*', line)
+                            if util_match:
+                                self.npu_usage = float(util_match.group(1))
+                            if temp_match and 'temp' in line.lower():
+                                # Ensure it's actually a temperature value
+                                temp_val = float(temp_match.group(1))
+                                if 20 <= temp_val <= 100:  # Sanity check for NPU temp
+                                    self.npu_temp = temp_val
             except Exception:
+                # Fail silently to avoid blocking inference thread
                 pass
             time.sleep(0.5)
 
