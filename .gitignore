@@ -3,3 +3,23 @@ install/
 log/
 data/
 */__pycache__/*
+# ROS 2 Build/Install/Log folders
+build/
+install/
+log/
+
+# Heavy Data and Models
+data/
+*.om
+*.mindir
+*.ckpt
+*.pt
+*.bag
+*.db3
+*.mp4
+*.h264
+
+# Python Cache
+__pycache__/
+*.pyc
+.Python

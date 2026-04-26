@@ -196,6 +196,11 @@ class YoloBareMetalNode(Node):
     def _init_csv_logger(self):
         with open(self.metrics_file, 'w', newline='') as f:
             writer = csv.writer(f)
+            writer.writerow(['timestamp', 'frame_idx', 'latency_ms', 'avg_latency_ms', 'effective_fps', 'npu_util_pct', 'npu_temp_c', 'mem_mb'])
+
+    def _log_metrics(self, avg_lat, fps):
+        try:
+            mem_mb = 0.0
             try:
                 with open('/proc/self/status', 'r') as f:
                     for line in f:
@@ -203,11 +208,8 @@ class YoloBareMetalNode(Node):
                             mem_mb = float(line.split()[1]) / 1024  # kB -> MB
                             break
             except:
-                mem_mb = 0.0
-            writer.writerow(['timestamp', 'frame_idx', 'latency_ms', 'avg_latency_ms', 'effective_fps', 'npu_util_pct', 'npu_temp_c', 'mem_mb'])
-
-    def _log_metrics(self, avg_lat, fps):
-        try:
+                pass  # Silent fail
+            
             with open(self.metrics_file, 'a', newline='') as f:
                 writer = csv.writer(f)
                 writer.writerow([
@@ -217,9 +219,10 @@ class YoloBareMetalNode(Node):
                     f"{avg_lat:.2f}",
                     f"{fps:.2f}",
                     f"{self.npu_usage:.1f}",
-                    f"{self.npu_temp:.1f}"
+                    f"{self.npu_temp:.1f}",
+                    f"{mem_mb:.1f}"  # ← Added mem_mb column
                 ])
-            self.get_logger().info(f"📊 Frame {self.frame_idx} | FPS: {fps:.1f} | Avg Lat: {avg_lat:.1f}ms | NPU: {self.npu_usage}%/{self.npu_temp}°C")
+            self.get_logger().info(f"📊 Frame {self.frame_idx} | FPS: {fps:.1f} | Avg Lat: {avg_lat:.1f}ms | NPU: {self.npu_usage}%/{self.npu_temp}°C | Mem: {mem_mb:.1f}MB")
         except Exception as e:
             self.get_logger().warn(f"Metric logging failed: {e}")
 
