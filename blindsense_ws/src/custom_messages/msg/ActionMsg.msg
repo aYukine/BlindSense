@@ -1,1 +1,1 @@
-uint8[8] motor
+uint8[2] motor

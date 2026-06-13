@@ -14,7 +14,7 @@ class ImageSubscriber(Node):
         )
         self.subscription = self.create_subscription(
             CompressedImage, 
-            'camera/image/compressed', 
+            'blindsense/hud/compressed', 
             self.image_callback, 
             qos_profile
         )
