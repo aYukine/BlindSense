@@ -1,6 +1,7 @@
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Vector3
+from std_msgs.msg import String
 import serial
 import math
 import time
@@ -13,21 +14,27 @@ class HardwareBridge(Node):
         SERIAL_PORT = "/dev/ttyUSB0"
         BAUD_RATE = 115200
         
-        # MPU-6050 Scale Factors
-        self.ACCEL_SCALE = 16384.0  # LSB Sensitivity for +/- 2g range
-        self.GYRO_SCALE = 131.0     # LSB Sensitivity for +/- 250 deg/s range
+        self.ACCEL_SCALE = 16384.0  
+        self.GYRO_SCALE = 131.0     
 
-        # Initialize Serial Connection
         try:
-            self.ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=0.05)
+            self.ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=0.01) # Low timeout for crisp control
         except Exception as e:
             self.get_logger().error(f"Failed to open serial port {SERIAL_PORT}: {e}")
             raise e
 
-        # Standard ROS 2 Publisher (Vector3 provides x, y, z fields which map to roll, pitch, yaw)
+        # --- ROS 2 RELEASES (PUBLISHERS & SUBSCRIBERS) ---
         self.imu_pub = self.create_publisher(Vector3, 'imu_data', 10)
         
-        # --- MOTION TRACKING & CALIBRATION VARIABLES ---
+        # Listening to the /motor topic using standard String messages
+        self.motor_sub = self.create_subscription(
+            String,
+            'motor',
+            self.motor_callback,
+            10
+        )
+        
+        # --- IMU VARIABLES ---
         self.roll = 0.0
         self.pitch = 0.0
         self.yaw = 0.0
@@ -43,26 +50,52 @@ class HardwareBridge(Node):
         self.get_logger().info("CALIBRATION: Place the sensor flat and PERFECTLY STILL...")
         self.get_logger().info("==============================================================")
 
-        # High-frequency processing timer (~50Hz matching the 0.02s interval)
-        self.create_timer(0.02, self.update)
+        # High frequency loop to handle incoming IMU lines quickly
+        self.create_timer(0.01, self.read_imu_update)
 
-    def update(self):
+    def motor_callback(self, msg):
+        """Processes high-level directional strings and sends direct pin-states to ESP32"""
+        command = msg.data.lower().strip()
+        
+        if command == "front":
+            # Both wheels forward
+            self.send_serial_cmd("L_HIGH")
+            self.send_serial_cmd("R_HIGH")
+        elif command == "right":
+            # Turn right: Left wheel forward, Right wheel static/backwards
+            self.send_serial_cmd("L_HIGH")
+            self.send_serial_cmd("R_LOW")
+        elif command == "left":
+            # Turn left: Left wheel static/backwards, Right wheel forward
+            self.send_serial_cmd("L_LOW")
+            self.send_serial_cmd("R_HIGH")
+        elif command == "stop":
+            self.send_serial_cmd("STOP")
+        else:
+            self.get_logger().warn(f"Unknown movement command received: {command}")
+
+    def send_serial_cmd(self, cmd_string):
+        """Helper to safely pass instructions down the physical line"""
+        try:
+            packet = f"{cmd_string}\n".encode('utf-8')
+            self.ser.write(packet)
+        except Exception as e:
+            self.get_logger().error(f"Serial write error: {e}")
+
+    def read_imu_update(self):
+        """Checks serial lines for incoming MPU6050 packets and broadcasts transformations"""
         if self.ser.in_waiting <= 0:
             return
 
         try:
-            # Read and parse incoming line
             line = self.ser.readline().decode('utf-8', errors='ignore').strip()
             if not line or "Accel:" not in line:
                 return
                 
-            # Delta time tracking for real-world integration physics
             current_time = time.time()
             dt = current_time - self.last_time
             self.last_time = current_time
             
-            # Parse text data stream
-            # Format: Accel: X=123 Y=456 Z=789 | Gyro: X=12 Y=34 Z=56
             parts = line.split('|')
             accel_parts = parts[0].replace("Accel: ", "").split()
             gyro_parts = parts[1].replace("Gyro: ", "").split()
@@ -72,43 +105,36 @@ class HardwareBridge(Node):
             az_raw = float(accel_parts[2].split('=')[1])
             gz_raw = float(gyro_parts[2].split('=')[1]) 
 
-            # --- PHASE 1: BOOTSTRAP BIAS CALIBRATION ---
             if self.calibrating:
                 self.gyro_data_buffer.append(gz_raw)
                 self.samples_read += 1
                 if self.samples_read >= self.calibration_samples:
                     self.gyro_z_offset = sum(self.gyro_data_buffer) / len(self.gyro_data_buffer)
                     self.calibrating = False
-                    self.get_logger().info(">>> Calibration Complete! Streaming standard telemetry. <<<")
+                    self.get_logger().info(">>> Calibration Complete! Node is fully operational. <<<")
                 return
 
-            # --- PHASE 2: PHYSICS MATH INTEGRATION ---
-            # Standard G-Force normalization
             ax = ax_raw / self.ACCEL_SCALE
             ay = ay_raw / self.ACCEL_SCALE
             az = az_raw / self.ACCEL_SCALE
             
-            # True 1:1 Orientation trigonometry
             self.roll = math.atan2(ay, az)
             self.pitch = math.atan2(-ax, math.sqrt(ay**2 + az**2))
             
-            # Filter and integrate Yaw rotation velocity
             corrected_gz = gz_raw - self.gyro_z_offset
             gz_deg_per_sec = corrected_gz / self.GYRO_SCALE
             
             if abs(gz_deg_per_sec) > 0.2: 
                 self.yaw += math.radians(gz_deg_per_sec) * dt
 
-            # --- PHASE 3: ROS 2 STANDARD MESSAGE PUBLISH ---
             msg = Vector3()
-            msg.x = self.roll   # Standard ROS mapping: X axis handles Roll
-            msg.y = self.pitch  # Standard ROS mapping: Y axis handles Pitch
-            msg.z = self.yaw    # Standard ROS mapping: Z axis handles Yaw
+            msg.x = self.roll   
+            msg.y = self.pitch  
+            msg.z = self.yaw    
             
             self.imu_pub.publish(msg)
 
-        except (ValueError, IndexError) as e:
-            # Drop malformed packets silently without stopping node threads
+        except (ValueError, IndexError):
             pass
         except Exception as e:
             self.get_logger().error(f"Unexpected processing error: {e}")
